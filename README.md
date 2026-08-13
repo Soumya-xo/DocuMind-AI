@@ -10,9 +10,18 @@ DocuMind AI is a full-stack **RAG (Retrieval-Augmented Generation)** application
 
 ---
 
+## 🌐 Live Demo
+
+**Frontend:** https://docu-mind-ai-seven-navy.vercel.app
+
+> ⚠️ The live demo currently hosts the frontend only. AI features require the backend and Ollama to run locally.
+
+---
+
 ## ✨ Features
 
 ### 🤖 AI Assistant
+
 - Chat with uploaded documents
 - Semantic document search
 - Multi-document question answering
@@ -20,6 +29,7 @@ DocuMind AI is a full-stack **RAG (Retrieval-Augmented Generation)** application
 - Context-aware AI responses
 
 ### 📄 Supported File Types
+
 - PDF
 - DOCX
 - TXT
@@ -28,6 +38,7 @@ DocuMind AI is a full-stack **RAG (Retrieval-Augmented Generation)** application
 - XLSX
 
 ### 🔍 Advanced RAG Pipeline
+
 - Text extraction
 - Recursive text chunking
 - Embedding generation with `nomic-embed-text`
@@ -36,12 +47,14 @@ DocuMind AI is a full-stack **RAG (Retrieval-Augmented Generation)** application
 - Response generation with `llama3.2`
 
 ### 🔐 Authentication & Security
+
 - JWT-based authentication
 - Google OAuth login
 - Secure user sessions
 - User-specific document isolation
 
 ### 🎨 User Experience
+
 - Modern responsive UI
 - Dark / Light mode
 - Document dashboard
@@ -79,7 +92,7 @@ For a detailed technical breakdown, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 | Layer | Technologies |
 |-------|--------------|
-| **Frontend** | React.js, Tailwind CSS, Axios, React Router |
+| **Frontend** | React.js, Vite, Tailwind CSS, Axios, React Router |
 | **Backend** | Node.js, Express.js, MongoDB, Mongoose |
 | **AI / RAG** | Ollama, LangChain, FAISS |
 | **Embedding Model** | `nomic-embed-text` |
@@ -131,7 +144,7 @@ Start the backend server:
 npm run dev
 ```
 
-Backend will run at **http://localhost:5001**
+Backend runs at **http://localhost:5001**
 
 ---
 
@@ -155,7 +168,7 @@ Start the frontend:
 npm run dev
 ```
 
-Frontend will run at **http://localhost:3000**
+Frontend runs at **http://localhost:3000**
 
 ---
 
@@ -242,9 +255,10 @@ DocuMind-AI/
 
 ## 📸 Screenshots
 
-Add screenshots after uploading images to your repository.
+Create a `screenshots/` folder and add project images.
 
 ```md
+![Landing Page](screenshots/landing.png)
 ![Dashboard](screenshots/dashboard.png)
 ![AI Chat](screenshots/chat.png)
 ```
@@ -277,6 +291,29 @@ VITE_GOOGLE_CLIENT_ID=
 - Ollama must be running locally for AI features to work.
 - Uploaded files and vector indexes are intentionally excluded from Git tracking.
 - This project is designed for **local/private document intelligence** workflows.
+- The deployed Vercel frontend does not include the local Ollama backend.
+
+---
+
+## 🚀 Deployment
+
+### Frontend (Vercel)
+
+The frontend is deployed on **Vercel**:
+
+➡️ https://docu-mind-ai-seven-navy.vercel.app
+
+### Backend
+
+The backend can be deployed on platforms such as:
+
+- Render
+- Railway
+- Fly.io
+- AWS EC2
+- DigitalOcean
+
+> Running Ollama on free cloud tiers is generally unreliable due to memory and CPU limitations. Local execution is recommended.
 
 ---
 
@@ -286,7 +323,7 @@ VITE_GOOGLE_CLIENT_ID=
 - [ ] Streaming AI responses
 - [ ] OCR for scanned PDFs
 - [ ] Docker support
-- [ ] Cloud deployment
+- [ ] Full cloud deployment
 - [ ] Advanced analytics dashboard
 - [ ] Multi-agent document analysis
 
@@ -296,7 +333,7 @@ See [TODO.md](./TODO.md) for the complete roadmap.
 
 ## 👨‍💻 Author
 
-**Suvam Nayak**  
+**Soumya Nayak**  
 MCA (Generative AI) – SRM Institute of Science and Technology
 
 - GitHub: [Soumya-xo](https://github.com/Soumya-xo)
