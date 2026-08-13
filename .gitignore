@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.local
+
+# Build
+dist/
+build/
+
+# Logs
+logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# VS Code
+.vscode/
+
+# Uploads
+backend/uploads/
+
+# Vector Store
+backend/vectorstore/
+
+# Cache
+.cache/
