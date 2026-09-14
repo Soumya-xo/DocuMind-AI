@@ -19,14 +19,17 @@ const app = express();
 
 // Middleware
 // app.use(cors({ origin: "*", credentials: true }));
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  "http://localhost:5001",
+  "http://127.0.0.1:5001",
+  "https://docu-mind-ai-seven-navy.vercel.app",
+];
+
 app.use(
   cors({
-    origin: [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://localhost:5001",
-      "http://127.0.0.1:5001",
-    ],
+    origin: allowedOrigins,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
   })
