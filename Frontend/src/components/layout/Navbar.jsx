@@ -1,7 +1,16 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 
 import { NavLink, useNavigate } from "react-router-dom";
-import { BarChart3, Bot, FileText, History, Settings } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  BarChart3,
+  Bot,
+  FileText,
+  History,
+  Settings,
+  Menu,
+  X,
+} from "lucide-react";
 import logoPng from "../../assets/logo.png";
 import ThemeToggle from "../../components/ThemeToggle.jsx";
 import Avatar from "../../components/Avatar.jsx";
@@ -25,6 +34,24 @@ const Navbar = () => {
   const navigate = useNavigate();
   const user = useLocalStorageUser();
   const isAuthed = Boolean(localStorage.getItem("token"));
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") setMobileNavOpen(false);
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileNavOpen]);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -36,26 +63,36 @@ const Navbar = () => {
     <header className="sticky top-0 z-50 border-b border-slate-100/70 bg-white/70 backdrop-blur-xl dark:border-slate-800/60 dark:bg-slate-950/60">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         <div className="flex items-center justify-between h-14">
-          <NavLink
-            to={isAuthed ? "/dashboard" : "/"}
-            className="flex items-center gap-3"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl shadow-lg shadow-slate-900/20 dark:bg-white">
-              <img
-                src={logoPng}
-                alt="DocuMind AI"
-                className="h-10 w-10 rounded-2xl object-contain"
-              />
-            </div>
-            <div className="hidden sm:block">
-              <p className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white">
-                DocuMind AI
-              </p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Document intelligence platform
-              </p>
-            </div>
-          </NavLink>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className="inline-flex items-center justify-center rounded-xl p-2 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors lg:hidden"
+              aria-label="Open navigation menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+
+            <NavLink
+              to={isAuthed ? "/dashboard" : "/"}
+              className="flex items-center gap-3"
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl shadow-lg shadow-slate-900/20 dark:bg-white">
+                <img
+                  src={logoPng}
+                  alt="DocuMind AI"
+                  className="h-10 w-10 rounded-2xl object-contain"
+                />
+              </div>
+              <div className="hidden sm:block">
+                <p className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white">
+                  DocuMind AI
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Document intelligence platform
+                </p>
+              </div>
+            </NavLink>
+          </div>
 
           <div className="flex items-center gap-3">
             {!isAuthed ? (
@@ -133,6 +170,121 @@ const Navbar = () => {
           </div>
         </div>
       </div>
+
+      {/* Mobile navigation drawer (below lg) */}
+      <AnimatePresence>
+        {mobileNavOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              onClick={() => setMobileNavOpen(false)}
+              className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm lg:hidden"
+              aria-hidden="true"
+            />
+
+            <motion.aside
+              initial={{ x: "-100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "-100%" }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className="fixed top-0 left-0 z-[70] h-full w-72 max-w-[80vw] bg-white dark:bg-slate-950 border-r border-slate-100/70 dark:border-slate-800/60 p-4 overflow-y-auto lg:hidden"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <img
+                    src={logoPng}
+                    alt="DocuMind AI"
+                    className="h-8 w-8 rounded-xl object-contain"
+                  />
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    DocuMind AI
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setMobileNavOpen(false)}
+                  className="inline-flex items-center justify-center rounded-xl p-2 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors"
+                  aria-label="Close navigation menu"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {!isAuthed ? (
+                <nav className="space-y-1">
+                  {navItemsLoggedOut.map((item) => (
+                    <a
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setMobileNavOpen(false)}
+                      className="block px-3 py-2.5 rounded-2xl text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100/60 dark:hover:bg-slate-900/40 transition-colors"
+                    >
+                      {item.label}
+                    </a>
+                  ))}
+
+                  <div className="mt-4 pt-4 border-t border-slate-100/70 dark:border-slate-800/60 space-y-2">
+                    <button
+                      onClick={() => {
+                        setMobileNavOpen(false);
+                        navigate("/login");
+                      }}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900/30 dark:text-slate-200"
+                    >
+                      Login
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMobileNavOpen(false);
+                        navigate("/register");
+                      }}
+                      className="w-full rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white dark:bg-white dark:text-slate-900"
+                    >
+                      Get Started
+                    </button>
+                  </div>
+                </nav>
+              ) : (
+                <nav className="space-y-1">
+                  {navItemsLoggedIn.map(({ to, label, Icon }) => (
+                    <NavLink
+                      key={to}
+                      to={to}
+                      onClick={() => setMobileNavOpen(false)}
+                      className={({ isActive }) =>
+                        [
+                          "w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-sm font-medium transition-colors",
+                          isActive
+                            ? "bg-primary-light/70 dark:bg-primary/20 text-primary border border-primary/20"
+                            : "text-slate-600 dark:text-slate-300 hover:bg-slate-100/60 dark:hover:bg-slate-900/40 border border-transparent",
+                        ].join(" ")
+                      }
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span>{label}</span>
+                    </NavLink>
+                  ))}
+
+                  <div className="mt-4 pt-4 border-t border-slate-100/70 dark:border-slate-800/60">
+                    <button
+                      onClick={() => {
+                        setMobileNavOpen(false);
+                        handleLogout();
+                      }}
+                      className="w-full btn-danger"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                </nav>
+              )}
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
     </header>
   );
 };

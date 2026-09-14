@@ -246,3 +246,42 @@ html[data-theme="dark"] .text-blue-100 {
     transform: translateY(-6px);
   }
 }
+
+/* Document row responsive switch (DocumentRow.jsx).
+ *
+ * This intentionally uses a CSS container query, not a Tailwind viewport
+ * breakpoint (`lg:` etc). The row is reused both on the full-width
+ * Documents page AND squeezed into a half-width column on the Dashboard
+ * (next to "Pro Tips") — at the same viewport width, its actual rendered
+ * width can differ by 2x+ between those two places. A viewport breakpoint
+ * can't see that difference and was exactly why the inline metadata/actions
+ * overflowed the card on Dashboard: the layout had "desktop" space on
+ * paper (viewport >= lg) but not in reality (column was ~300px). A
+ * container query reacts to the row's own real width instead, so it works
+ * correctly in both places without needing two different components or an
+ * extra plugin dependency.
+ */
+.document-row-container {
+  container-type: inline-size;
+}
+
+.document-row-inline {
+  display: none;
+}
+
+.document-row-stacked {
+  display: flex;
+}
+
+/* ~560px comfortably fits filename + type/size/pages/date + 3 actions on
+ * one line (roughly 430px of fixed-width content once the filename hits
+ * its 100px floor); below it, the stacked two-line layout takes over. */
+@container (min-width: 560px) {
+  .document-row-inline {
+    display: flex;
+  }
+
+  .document-row-stacked {
+    display: none;
+  }
+}

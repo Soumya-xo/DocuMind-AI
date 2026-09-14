@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { uploadPDFs } from "../services/api.js";
+import { UploadCloud, FileText, X, Loader2 } from "lucide-react";
 
 const PDFUpload = ({ onUploadSuccess }) => {
   const [files, setFiles] = useState([]);
@@ -110,25 +111,23 @@ const PDFUpload = ({ onUploadSuccess }) => {
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         onClick={() => inputRef.current?.click()}
-        className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${
+        className={`rounded-2xl border-2 border-dashed px-6 py-6 text-center cursor-pointer transition-colors ${
           dragOver
-            ? "border-primary bg-primary-light"
-            : "border-slate-200 hover:border-primary hover:bg-slate-50"
+            ? "border-primary bg-primary-light/60 dark:bg-primary/10"
+            : "border-slate-200/80 dark:border-slate-700/70 hover:border-primary/60 hover:bg-slate-50/60 dark:hover:bg-slate-900/30"
         }`}
       >
-        {" "}
-        <div className="flex flex-col items-center gap-2">
-          {" "}
-          <span className="text-3xl">{dragOver ? "📂" : "📁"} </span>
-          <p className="text-sm font-medium text-slate-700">
+        <div className="flex flex-col items-center gap-1.5">
+          <div className="h-10 w-10 rounded-2xl bg-primary-light/70 dark:bg-primary/15 flex items-center justify-center text-primary">
+            <UploadCloud className="h-5 w-5" />
+          </div>
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
             {dragOver
-              ? "Drop documents here"
-              : "Click or drag & drop documents"}
+              ? "Drop files here"
+              : "Drop files here or click to browse"}
           </p>
-          <p className="text-xs text-slate-400">
-            PDF, DOCX, TXT, MD, CSV, XLSX
-            <br />
-            Max 10MB per file · Up to 10 files
+          <p className="text-xs text-slate-400 dark:text-slate-500">
+            PDF · DOCX · TXT · MD · CSV · XLSX · Max 10MB per file · Up to 10 files
           </p>
         </div>
         <input
@@ -142,20 +141,23 @@ const PDFUpload = ({ onUploadSuccess }) => {
       </div>
 
       {files.length > 0 && (
-        <div className="mt-3 space-y-2">
+        <div className="mt-2.5 space-y-1.5">
           {files.map((file, i) => (
             <div
               key={i}
-              className="flex items-center justify-between bg-blue-50 rounded-lg px-3 py-2"
+              className="flex items-center justify-between rounded-xl bg-primary-light/50 dark:bg-primary/10 px-3 py-1.5"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="text-base shrink-0">📄</span>
+                <FileText className="h-3.5 w-3.5 text-primary shrink-0" />
 
-                <span className="text-xs text-slate-700 truncate font-medium">
+                <span
+                  className="text-xs text-slate-700 dark:text-slate-200 truncate font-medium"
+                  title={file.name}
+                >
                   {file.name}
                 </span>
 
-                <span className="text-xs text-slate-400 shrink-0">
+                <span className="text-xs text-slate-400 dark:text-slate-500 shrink-0">
                   {formatSize(file.size)}
                 </span>
               </div>
@@ -166,8 +168,9 @@ const PDFUpload = ({ onUploadSuccess }) => {
                   removeFile(i);
                 }}
                 className="text-slate-400 hover:text-red-500 transition-colors ml-2 shrink-0"
+                aria-label="Remove file"
               >
-                ✕
+                <X className="h-3.5 w-3.5" />
               </button>
             </div>
           ))}
@@ -175,46 +178,27 @@ const PDFUpload = ({ onUploadSuccess }) => {
       )}
 
       {error && (
-        <p className="mt-2 text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">
-          ⚠️ {error}
+        <p className="mt-2 text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 rounded-xl px-3 py-2">
+          {error}
         </p>
       )}
 
       <button
         onClick={handleUpload}
         disabled={uploading || files.length === 0}
-        className="btn-primary w-full mt-4 flex items-center justify-center gap-2"
+        className="btn-primary w-full mt-3 py-2.5 flex items-center justify-center gap-2 text-sm"
       >
         {uploading ? (
           <>
-            <svg
-              className="animate-spin h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v8H4z"
-              />
-            </svg>
-            Processing documents...
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Processing...
           </>
         ) : (
           <>
-            ⬆️ Upload{" "}
+            <UploadCloud className="h-4 w-4" />
             {files.length > 0
-              ? `${files.length} Document${files.length > 1 ? "s" : ""}`
-              : "Documents"}
+              ? `Upload ${files.length} Document${files.length > 1 ? "s" : ""}`
+              : "Upload Documents"}
           </>
         )}
       </button>

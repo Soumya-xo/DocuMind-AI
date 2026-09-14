@@ -9,6 +9,7 @@ import {
   deletePDF,
   viewDocument,
   downloadDocument,
+  reindexDocuments,
 } from "../controllers/pdfController.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -106,5 +107,9 @@ router.get("/view/:id", protect, viewDocument);
 router.get("/download/:id", protect, downloadDocument);
 
 router.delete("/:id", protect, deletePDF);
+
+// Explicit, on-demand only — never triggered automatically. See
+// reindexDocuments in pdfController.js.
+router.post("/reindex", protect, reindexDocuments);
 
 export default router;

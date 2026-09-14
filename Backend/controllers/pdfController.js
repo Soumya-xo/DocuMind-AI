@@ -5,6 +5,7 @@ import PDF from "../models/PDF.js";
 import {
   addPDFToVectorStore,
   removePDFFromVectorStore,
+  reindexActiveProvider,
 } from "../utils/ragService.js";
 import { extractTextFromFile } from "../utils/fileExtractor.js";
 
@@ -26,6 +27,26 @@ if (!fs.existsSync(vectorstoreDir)) {
     recursive: true,
   });
 }
+
+// pdf.filePath is an ABSOLUTE path captured at upload time. If this project
+// folder is ever moved, renamed, or copied (as it evidently has been at
+// least twice — old records point at "DocuMind-AI-main" and "documind 2"),
+// every previously-uploaded document's stored filePath silently stops
+// resolving even though the file itself is sitting right there under the
+// current uploads/ dir with the same basename (pdf.fileName is always that
+// basename — see uploadPDFs below, where both are set from the same multer
+// `file` object). Re-deriving the path from the CURRENT uploadsDir makes
+// View/Download/Delete resilient to that, without needing to touch any
+// stored data. Falls back to the stored filePath verbatim for the (in
+// practice, non-existent) case where fileName isn't just filePath's
+// basename.
+const resolveActualFilePath = (pdf) => {
+  if (pdf.fileName) {
+    const currentPath = path.join(uploadsDir, pdf.fileName);
+    if (fs.existsSync(currentPath)) return currentPath;
+  }
+  return pdf.filePath;
+};
 
 /**
 
@@ -100,6 +121,11 @@ export const uploadPDFs = async (req, res) => {
           originalName: file.originalname,
           filePath: file.path,
           extractedText,
+          // Per-page text for page-aware retrieval/citations and for
+          // page-aware rebuilds later (see removePDFFromVectorStore).
+          // Present for every format; pageNumber is null where a format
+          // has no real page boundaries (see fileExtractor.js).
+          pages: fileData.pageTexts,
           fileSize: file.size,
           pageCount: fileData.pages,
         });
@@ -108,10 +134,9 @@ export const uploadPDFs = async (req, res) => {
 
         await addPDFToVectorStore(
           req.user._id.toString(),
-          extractedText,
+          fileData.pageTexts,
           pdf._id.toString(),
           file.originalname,
-          extractedText,
         );
 
         console.log("✅ Indexed in FAISS");
@@ -246,7 +271,9 @@ export const viewDocument = async (req, res) => {
       });
     }
 
-    if (!pdf.filePath || !fs.existsSync(pdf.filePath)) {
+    const filePath = resolveActualFilePath(pdf);
+
+    if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({
         success: false,
         message: "File missing on server.",
@@ -256,12 +283,12 @@ export const viewDocument = async (req, res) => {
     const ext = getFileExtension(pdf.originalName);
 
     if (ext === "pdf") {
-      return streamFile(res, pdf.filePath, "application/pdf");
+      return streamFile(res, filePath, "application/pdf");
     }
 
     if (["txt", "md", "csv"].includes(ext)) {
       const contentType = "text/plain; charset=utf-8";
-      return streamFile(res, pdf.filePath, contentType);
+      return streamFile(res, filePath, contentType);
     }
 
     if (ext === "docx") {
@@ -269,13 +296,13 @@ export const viewDocument = async (req, res) => {
       // (Rendering DOCX as HTML requires additional conversion; keep production-safe.)
       return streamFile(
         res,
-        pdf.filePath,
+        filePath,
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       );
     }
 
     // Fallback: download-ish type
-    return streamFile(res, pdf.filePath, "application/octet-stream");
+    return streamFile(res, filePath, "application/octet-stream");
   } catch (error) {
     console.error("View File Error:", error);
     res.status(500).json({
@@ -302,7 +329,9 @@ export const downloadDocument = async (req, res) => {
       });
     }
 
-    if (!pdf.filePath || !fs.existsSync(pdf.filePath)) {
+    const filePath = resolveActualFilePath(pdf);
+
+    if (!filePath || !fs.existsSync(filePath)) {
       return res.status(404).json({
         success: false,
         message: "File missing on server.",
@@ -328,7 +357,7 @@ export const downloadDocument = async (req, res) => {
     res.setHeader("Content-Type", contentType);
     res.setHeader("Cache-Control", "no-store");
 
-    const readStream = fs.createReadStream(pdf.filePath);
+    const readStream = fs.createReadStream(filePath);
     readStream.on("error", () => {
       res.status(500).json({
         success: false,
@@ -359,8 +388,10 @@ export const deletePDF = async (req, res) => {
       });
     }
 
-    if (fs.existsSync(pdf.filePath)) {
-      fs.unlinkSync(pdf.filePath);
+    const filePath = resolveActualFilePath(pdf);
+
+    if (filePath && fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
     }
 
     await removePDFFromVectorStore(req.user._id.toString(), pdf._id.toString());
@@ -377,6 +408,37 @@ export const deletePDF = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to delete file.",
+    });
+  }
+};
+
+/**
+ * POST /api/pdf/reindex
+ *
+ * Rebuilds the caller's FAISS index for the CURRENTLY ACTIVE embedding
+ * provider directly from their documents already stored in MongoDB — no
+ * re-upload required. This is the explicit, user-triggered counterpart to
+ * switching AI_EMBEDDING_PROVIDER: after changing that env var and
+ * restarting the server, calling this endpoint backfills the new
+ * provider's index from existing data. It is never called automatically
+ * (not on startup, not on a provider change) since re-embedding a user's
+ * entire document set is a real, potentially slow operation.
+ */
+export const reindexDocuments = async (req, res) => {
+  try {
+    const result = await reindexActiveProvider(req.user._id.toString());
+
+    res.json({
+      success: true,
+      message: `Re-indexed ${result.chunks} chunk(s) for the active embedding provider.`,
+      chunks: result.chunks,
+    });
+  } catch (error) {
+    console.error("Reindex Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to re-index documents: " + error.message,
     });
   }
 };

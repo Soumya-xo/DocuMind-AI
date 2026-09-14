@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import ThemeToggle from "../components/ThemeToggle.jsx";
 import PDFUpload from "../components/PDFUpload.jsx";
+import DocumentRow from "../components/DocumentRow.jsx";
 import { deletePDF, fetchPDFs } from "../services/api.js";
-import { FileText, Download, Eye, Search, Trash2, Upload } from "lucide-react";
+import { viewPDFFile, downloadPDFFile } from "../utils/documentActions.js";
+import { FileText, Search, Upload, X } from "lucide-react";
 import DocuMindDashboardLayout from "../layouts/DocuMindDashboardLayout.jsx";
 
 const typeFromName = (name = "") => {
@@ -78,24 +80,6 @@ const Documents = () => {
     return ["All", ...Array.from(set).sort()];
   }, [pdfs]);
 
-  const formatSize = (bytes) => {
-    if (!bytes && bytes !== 0) return "";
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const formatDate = (dateStr) => {
-    try {
-      return new Date(dateStr).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-    } catch {
-      return "";
-    }
-  };
-
   const handleDeletePDF = async (id, name) => {
     if (
       !window.confirm(
@@ -115,62 +99,8 @@ const Documents = () => {
     }
   };
 
-  const handleView = async (id) => {
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL || "http://localhost:5001"}/api/pdf/view/${id}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        },
-      );
-      if (!res.ok) {
-        const msg = await res.text();
-        alert(msg || "Failed to view document.");
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
-    } catch (e) {
-      alert(e?.message || "Failed to view document.");
-    }
-  };
-
-  const handleDownload = async (id, originalName) => {
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL || "http://localhost:5001"}/api/pdf/download/${id}`,
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        },
-      );
-
-      if (!res.ok) {
-        const msg = await res.text();
-        alert(msg || "Failed to download document.");
-        return;
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = originalName || "document";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
-    } catch (e) {
-      alert(e?.message || "Failed to download document.");
-    }
-  };
+  const handleView = (id) => viewPDFFile(id);
+  const handleDownload = (id, originalName) => downloadPDFFile(id, originalName);
 
   return (
     <DocuMindDashboardLayout>
@@ -207,7 +137,7 @@ const Documents = () => {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="space-y-4">
           <motion.section
             initial={reduceMotion ? undefined : { opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -263,9 +193,18 @@ const Documents = () => {
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search documents..."
-                  className="w-full rounded-2xl border border-slate-100/70 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/40 pl-9 pr-3 py-2.5 text-sm outline-none focus:ring-4 focus:ring-primary/10"
+                  placeholder="Search by filename..."
+                  className="w-full rounded-2xl border border-slate-100/70 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/40 pl-9 pr-9 py-2.5 text-sm text-slate-900 dark:text-white outline-none transition-shadow focus:ring-4 focus:ring-primary/15 focus:border-primary/40"
                 />
+                {query && (
+                  <button
+                    onClick={() => setQuery("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
 
               <select
@@ -300,77 +239,33 @@ const Documents = () => {
                     No documents found
                   </h3>
                   <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-                    Try changing filters or upload a new file.
+                    {query || typeFilter !== "All"
+                      ? "Try a different filename or clear your search."
+                      : "Upload a file to get started."}
                   </p>
+                  {(query || typeFilter !== "All") && (
+                    <button
+                      onClick={() => {
+                        setQuery("");
+                        setTypeFilter("All");
+                      }}
+                      className="mt-3 text-sm font-semibold text-primary hover:underline"
+                    >
+                      Clear search
+                    </button>
+                  )}
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   {filteredPDFs.map((pdf) => (
-                    <motion.div
+                    <DocumentRow
                       key={pdf._id}
-                      initial={reduceMotion ? undefined : { opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      whileHover={reduceMotion ? undefined : { y: -2 }}
-                      className="rounded-[1.5rem] border border-slate-100/70 dark:border-slate-800/60 bg-white/70 dark:bg-slate-900/40 p-4 group flex items-start justify-between gap-3"
-                    >
-                      <div className="flex items-start gap-3 min-w-0">
-                        <div className="h-10 w-10 rounded-2xl bg-slate-50/70 dark:bg-slate-950/30 border border-slate-100/70 dark:border-slate-800/60 flex items-center justify-center shrink-0">
-                          <FileText className="h-5 w-5 text-primary" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-                            {pdf.originalName}
-                          </p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                            {typeFromName(pdf.originalName)} ·{" "}
-                            {formatSize(pdf.fileSize)} ·{" "}
-                            {formatDate(pdf.uploadedAt)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          onClick={() => handleView(pdf._id)}
-                          className="hidden sm:inline-flex items-center rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/60 dark:bg-slate-950/20 border border-slate-100/70 dark:border-slate-800/60 text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-900/40 transition-colors"
-                          aria-label="View"
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </button>
-                        <button
-                          onClick={() =>
-                            handleDownload(pdf._id, pdf.originalName)
-                          }
-                          className="hidden sm:inline-flex items-center rounded-xl px-3 py-1.5 text-xs font-semibold bg-white/60 dark:bg-slate-950/20 border border-slate-100/70 dark:border-slate-800/60 text-slate-700 dark:text-slate-200 hover:bg-white/90 dark:hover:bg-slate-900/40 transition-colors"
-                          aria-label="Download"
-                        >
-                          <Download className="h-4 w-4 mr-1" />
-                          Download
-                        </button>
-
-                        <button
-                          onClick={() =>
-                            handleDeletePDF(pdf._id, pdf.originalName)
-                          }
-                          disabled={deletingId === pdf._id}
-                          className="inline-flex items-center justify-center rounded-xl p-2 bg-red-50/70 dark:bg-red-500/10 border border-red-200/70 dark:border-red-500/20 text-red-600 hover:bg-red-100/90 dark:hover:bg-red-500/15 transition-colors disabled:opacity-50"
-                          title="Delete"
-                        >
-                          {deletingId === pdf._id ? (
-                            <motion.span
-                              animate={{ rotate: 360 }}
-                              transition={{ duration: 0.6, ease: "linear" }}
-                              className="inline-flex"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </motion.span>
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </button>
-                      </div>
-                    </motion.div>
+                      pdf={pdf}
+                      onView={handleView}
+                      onDownload={handleDownload}
+                      onDelete={handleDeletePDF}
+                      deletingId={deletingId}
+                    />
                   ))}
                 </div>
               )}

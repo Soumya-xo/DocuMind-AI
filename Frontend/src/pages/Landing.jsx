@@ -13,18 +13,15 @@ import {
   Database,
   FileText,
   Files,
-  Image,
   //   Linkedin,
   Lock,
   MessageSquare,
   MoonStar,
-  Play,
   Quote,
   Scale,
   Search,
   ShieldCheck,
   Sparkles,
-  Star,
   Upload,
   X,
   Zap,
@@ -42,7 +39,7 @@ const features = [
     icon: Files,
     title: "Multi-Document Analysis",
     description:
-      "Compare and synthesize insight across PDFs, DOCX files, spreadsheets, text, and images.",
+      "Compare and synthesize insight across PDFs, DOCX files, spreadsheets, and text notes.",
   },
   {
     icon: Search,
@@ -57,10 +54,10 @@ const features = [
       "Work with CSV and XLSX data using intelligent table-aware analysis and summaries.",
   },
   {
-    icon: Image,
-    title: "OCR Image Understanding",
+    icon: Quote,
+    title: "Page-Aware Citations",
     description:
-      "Extract and reason over text inside images, scanned pages, and visual documents.",
+      "Every answer links back to the exact file and page it came from, so you can verify the source.",
   },
   {
     icon: Scale,
@@ -100,7 +97,7 @@ const steps = [
     icon: Upload,
     title: "Upload Documents",
     description:
-      "Drop in PDFs, DOCX, TXT, CSV, XLSX, or images and let the workspace ingest them.",
+      "Drop in PDFs, DOCX, TXT, MD, CSV, or XLSX files and let the workspace ingest them.",
   },
   {
     number: "02",
@@ -125,24 +122,41 @@ const steps = [
   },
 ];
 
-const testimonials = [
+const useCases = [
   {
-    name: "Ava Chen",
-    role: "Product Lead, Atlas Studio",
-    quote:
-      "DocuMind AI replaced three separate tools in our workflow. The document comparison and summarization flow is excellent.",
+    icon: FileText,
+    title: "Resume Analysis",
+    description: "Ask questions about experience, skills, and education.",
   },
   {
-    name: "Noah Patel",
-    role: "Analyst, Northstar Ops",
-    quote:
-      "The semantic search feels genuinely intelligent. I can jump between files and still get grounded answers instantly.",
+    icon: Database,
+    title: "Research",
+    description: "Pull findings and figures across multiple papers at once.",
   },
   {
-    name: "Mia Rodriguez",
-    role: "Founder, SignalLayer",
-    quote:
-      "The UI feels like a premium AI product. Fast, focused, and polished across dark and light mode.",
+    icon: Files,
+    title: "Reports",
+    description: "Summarize and query long reports without reading page by page.",
+  },
+  {
+    icon: Scale,
+    title: "Contracts",
+    description: "Compare clauses and surface differences across versions.",
+  },
+  {
+    icon: MessageSquare,
+    title: "Notes",
+    description: "Turn scattered notes into searchable, answerable knowledge.",
+  },
+  {
+    icon: BarChart3,
+    title: "Spreadsheet Analysis",
+    description: "Ask questions about CSV and XLSX data in plain English.",
+  },
+  {
+    icon: Scale,
+    title: "Document Comparison",
+    description: "Spot overlaps and contradictions across multiple files.",
   },
 ];
 
@@ -150,7 +164,7 @@ const faqItems = [
   {
     question: "What file formats are supported?",
     answer:
-      "DocuMind AI supports PDF, DOCX, TXT, CSV, XLSX, and image uploads for OCR-powered analysis.",
+      "DocuMind AI supports PDF, DOCX, TXT, MD, CSV, and XLSX uploads.",
   },
   {
     question: "Is my data secure?",
@@ -319,7 +333,6 @@ const FaqItem = ({ item, isOpen, onToggle }) => (
 const Landing = () => {
   const reduceMotion = useReducedMotion();
   const [openFaq, setOpenFaq] = useState(0);
-  const stars = [0, 1, 2, 3, 4];
 
   return (
     <div className="relative overflow-hidden bg-background text-slate-900 dark:text-white">
@@ -341,8 +354,8 @@ const Landing = () => {
               className="max-w-2xl"
             >
               <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-600 shadow-sm backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-300">
-                <Sparkles className="h-4 w-4 text-primary" /> AI document
-                intelligence, redesigned
+                <Sparkles className="h-4 w-4 text-primary" /> AI-Powered
+                Document Intelligence
               </span>
 
               <h1 className="mt-6 text-5xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-6xl lg:text-7xl">
@@ -353,8 +366,8 @@ const Landing = () => {
               </h1>
 
               <p className="mt-6 max-w-xl text-lg leading-8 text-slate-600 dark:text-slate-300 sm:text-xl">
-                Upload files, analyze documents, compare information, generate
-                code, and get intelligent answers powered by AI.
+                Upload files, analyze documents, compare information, and get
+                grounded answers powered by AI.
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -366,17 +379,17 @@ const Landing = () => {
                   <ArrowRight className="h-4 w-4" />
                 </Link>
                 <a
-                  href="#showcase"
+                  href="#how-it-works"
                   className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white/80 px-6 py-3.5 text-sm font-semibold text-slate-700 backdrop-blur-xl transition-all hover:-translate-y-0.5 hover:border-primary hover:text-primary dark:border-slate-800 dark:bg-slate-900/80 dark:text-slate-200"
                 >
-                  <Play className="h-4 w-4" /> Watch Demo
+                  <ArrowRight className="h-4 w-4" /> See How It Works
                 </a>
               </div>
 
               <div className="mt-10 grid max-w-xl grid-cols-1 gap-3 sm:grid-cols-3">
                 {[
-                  ["50+", "supported document flows"],
-                  ["1 workspace", "for every data source"],
+                  ["6 formats", "PDF, DOCX, TXT, MD, CSV, XLSX"],
+                  ["Page-aware", "citations with every answer"],
                   ["Local AI", "via Ollama"],
                 ].map(([value, label]) => (
                   <div
@@ -415,10 +428,10 @@ const Landing = () => {
 
               <div className="absolute -right-6 top-24 hidden rounded-2xl border border-slate-200 bg-white/80 px-4 py-3 shadow-xl backdrop-blur-xl lg:block dark:border-slate-800 dark:bg-slate-900/80">
                 <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
-                  <Image className="h-4 w-4 text-primary" /> OCR
+                  <FileText className="h-4 w-4 text-primary" /> XLSX
                 </div>
                 <p className="mt-2 text-sm font-medium text-slate-900 dark:text-white">
-                  Scanned receipt.png
+                  Q3_Report.xlsx
                 </p>
               </div>
 
@@ -465,8 +478,8 @@ const Landing = () => {
 
                     <div className="grid grid-cols-2 gap-3 text-sm">
                       {[
-                        ["Documents indexed", "128"],
-                        ["Answers generated", "4.8k"],
+                        ["Formats supported", "6"],
+                        ["Powered by", "Ollama"],
                       ].map(([label, value]) => (
                         <div
                           key={label}
@@ -517,7 +530,7 @@ const Landing = () => {
                           <Search className="h-4 w-4 text-primary" /> Search
                         </div>
                         <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
-                          Read and understand scanned documents and images.
+                          Find the exact passage across every uploaded file, instantly.
                         </p>
                       </div>
                     </div>
@@ -535,13 +548,13 @@ const Landing = () => {
                     repeat: Infinity,
                     ease: "easeInOut",
                   }}
-                  className="absolute -bottom-8 left-1/2 hidden -translate-x-1/2 rounded-2xl border border-slate-200 bg-white/85 px-4 py-3 shadow-xl backdrop-blur-xl sm:block dark:border-slate-800 dark:bg-slate-900/80"
+                  className="absolute -bottom-8 inset-x-6 hidden rounded-2xl border border-slate-200 bg-white/85 px-4 py-3 shadow-xl backdrop-blur-xl sm:flex sm:justify-center dark:border-slate-800 dark:bg-slate-900/80"
                 >
-                  <div className="flex items-center gap-3 text-xs font-medium text-slate-600 dark:text-slate-300">
-                    {["PDF", "DOCX", "XLSX", "TXT", "Images"].map((item) => (
+                  <div className="flex flex-wrap items-center justify-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+                    {["PDF", "DOCX", "TXT", "MD", "CSV", "XLSX"].map((item) => (
                       <span
                         key={item}
-                        className="rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-800"
+                        className="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800"
                       >
                         {item}
                       </span>
@@ -762,6 +775,16 @@ const Landing = () => {
                       assumptions. I can summarize the differences or generate a
                       comparison table.
                     </p>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-primary/20 px-2.5 py-1 text-xs font-medium text-primary-light">
+                        <FileText className="h-3 w-3" /> Q2_Strategy.pdf —
+                        Page 2
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-primary/20 px-2.5 py-1 text-xs font-medium text-primary-light">
+                        <FileText className="h-3 w-3" /> Engineering_Notes.docx
+                      </span>
+                    </div>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -839,6 +862,52 @@ const Landing = () => {
                   ))}
                 </div>
               </motion.div>
+            </div>
+          </div>
+        </section>
+
+        <section
+          id="architecture"
+          className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:px-8"
+        >
+          <motion.div
+            variants={sectionVariants}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.25 }}
+          >
+            <SectionHeading
+              eyebrow="Under the hood"
+              title="A real retrieval pipeline, not a black box"
+              description="For the curious: here's the actual flow behind every grounded answer."
+            />
+          </motion.div>
+
+          <div className="mt-10 rounded-[2rem] border border-slate-200 bg-white/80 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/80 sm:p-8">
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-5">
+              {[
+                ["Your Documents", Upload],
+                ["Text Extraction", FileText],
+                ["Chunking + Metadata", Files],
+                ["Nomic Embeddings", Database],
+                ["FAISS Retrieval", Search],
+                ["Ollama LLM", Brain],
+                ["Answer + Sources", MessageSquare],
+              ].map(([label, Icon], index, arr) => (
+                <React.Fragment key={label}>
+                  <div className="flex w-20 flex-col items-center text-center gap-2 sm:w-24">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary-light/70 text-primary dark:bg-primary/20">
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <p className="text-xs font-medium leading-tight text-slate-700 dark:text-slate-200">
+                      {label}
+                    </p>
+                  </div>
+                  {index < arr.length - 1 && (
+                    <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-700" />
+                  )}
+                </React.Fragment>
+              ))}
             </div>
           </div>
         </section>
@@ -921,7 +990,7 @@ const Landing = () => {
               badge="For serious daily use"
               items={[
                 "Multi-document RAG",
-                "OCR and comparison workflows",
+                "Document comparison workflows",
                 "Advanced summaries",
               ]}
               featured
@@ -951,40 +1020,32 @@ const Landing = () => {
             viewport={{ once: true, amount: 0.25 }}
           >
             <SectionHeading
-              eyebrow="Testimonials"
-              title="Loved by people who work with information all day"
-              description="A calm, focused interface makes it easier to stay in flow while working with complex documents."
+              eyebrow="Built for real document workflows"
+              title="Wherever your documents come from, DocuMind AI can work with them"
+              description="A focused set of use cases the current retrieval pipeline is actually built to handle."
             />
           </motion.div>
 
-          <div className="mt-10 grid gap-5 lg:grid-cols-3">
-            {testimonials.map((item, index) => (
+          <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {useCases.map((item, index) => (
               <motion.article
-                key={item.name}
+                key={item.title}
                 variants={featureVariants}
                 initial="hidden"
                 whileInView="visible"
                 viewport={{ once: true, amount: 0.2 }}
                 custom={index * 0.05}
-                className="rounded-3xl border border-slate-200 bg-white/85 p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/80"
+                className="rounded-3xl border border-slate-200 bg-white/85 p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl dark:border-slate-800 dark:bg-slate-900/80"
               >
-                <div className="flex items-center gap-1 text-amber-500">
-                  {stars.map((starIndex) => (
-                    <Star key={starIndex} className="h-4 w-4 fill-current" />
-                  ))}
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary-light/70 text-primary dark:bg-primary/20">
+                  <item.icon className="h-5 w-5" />
                 </div>
-                <Quote className="mt-5 h-8 w-8 text-primary/60" />
-                <p className="mt-4 text-sm leading-7 text-slate-600 dark:text-slate-300">
-                  {item.quote}
+                <p className="mt-4 text-sm font-semibold text-slate-900 dark:text-white">
+                  {item.title}
                 </p>
-                <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-800">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                    {item.name}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {item.role}
-                  </p>
-                </div>
+                <p className="mt-1.5 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  {item.description}
+                </p>
               </motion.article>
             ))}
           </div>
@@ -1052,7 +1113,7 @@ const Landing = () => {
                   {[
                     ["Fast", "Local-first workflows and smooth UX"],
                     ["Secure", "Authentication and controlled access"],
-                    ["Flexible", "Works across docs, data, and images"],
+                    ["Flexible", "Works across docs, spreadsheets, and notes"],
                   ].map(([label, desc]) => (
                     <div
                       key={label}

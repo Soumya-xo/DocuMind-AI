@@ -8,3 +8,7 @@ vectorstore/
 
 logs/
 *.log
+
+# Backend runtime data
+Backend/uploads/
+Backend/vectorstore/

@@ -24,6 +24,21 @@ const pdfSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // Per-page (or per-section, for non-paged formats) text, used so
+    // FAISS rebuilds (on delete of a sibling document) can stay page-aware
+    // without re-parsing the original file. Optional/absent on documents
+    // uploaded before this field existed — those simply fall back to
+    // extractedText with a null pageNumber on rebuild (see
+    // removePDFFromVectorStore), so old records remain fully compatible.
+    pages: {
+      type: [
+        {
+          pageNumber: { type: Number, default: null },
+          text: { type: String, default: "" },
+        },
+      ],
+      default: undefined,
+    },
     fileSize: {
       type: Number, // size in bytes
     },
