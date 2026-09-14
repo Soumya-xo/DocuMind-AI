@@ -1,451 +1,563 @@
-# 🏗️ DocuMind AI - System Architecture
-
-## 📋 Project Overview
-
-**DocuMind AI** is an AI-powered document intelligence platform that enables users to upload documents and interact with them through conversational AI. The application combines **Retrieval-Augmented Generation (RAG)**, **vector embeddings**, and **local LLM inference using Ollama** to provide semantic search, document analysis, summarization, and intelligent question answering.
-
----
-
-## 🛠️ Technology Stack
-
-| Layer | Technologies |
-|-------|--------------|
-| **Frontend** | React.js, Vite, Tailwind CSS, Framer Motion |
-| **Backend** | Node.js, Express.js |
-| **Database** | MongoDB, Mongoose |
-| **Authentication** | JWT, Google OAuth |
-| **AI / ML** | Ollama, LangChain, FAISS, nomic-embed-text, llama3.2 |
-| **File Processing** | pdf-parse, mammoth, csv-parser |
-| **Deployment** | Vercel (Frontend), Node.js server (Backend) |
-
----
-
-# 📁 Project Structure
-
+# DocuMind AI — Architecture
+## 1. Architecture Overview
+DocuMind AI is a full-stack AI document assistant built around a Retrieval-Augmented Generation (RAG) architecture.
+The system supports document upload, text extraction, embeddings, vector search, AI-powered question answering, source citations, per-document chat, image understanding, and streaming responses.
 ```text
-DocuMind-AI/
-├── Backend/
-│   ├── controllers/
-│   ├── middleware/
-│   ├── models/
-│   ├── routes/
-│   ├── services/
-│   ├── utils/
-│   ├── uploads/
-│   ├── vectorstore/
-│   └── server.js
+                         ┌──────────────────────┐
+                         │       Frontend       │
+                         │   React + Vite       │
+                         │   Tailwind CSS        │
+                         └──────────┬───────────┘
+                                    │
+                              HTTP / SSE
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │       Backend        │
+                         │   Node.js + Express  │
+                         └──────────┬───────────┘
+                                    │
+             ┌──────────────────────┼──────────────────────┐
+             │                      │                      │
+             ▼                      ▼                      ▼
+      ┌─────────────┐       ┌─────────────┐       ┌──────────────┐
+      │    Auth     │       │  Document   │       │     Chat     │
+      │ JWT / OAuth │       │  Pipeline   │       │   /ask       │
+      └─────────────┘       └──────┬──────┘       └──────┬───────┘
+                                   │                      │
+                                   ▼                      ▼
+                            ┌─────────────┐       ┌──────────────┐
+                            │  MongoDB    │       │ RAG Pipeline │
+                            │ Metadata +  │       │ Retrieval +  │
+                            │ extracted   │       │ Generation   │
+                            │ content     │       └──────┬───────┘
+                            └─────────────┘              │
+                                                        ▼
+                                             ┌────────────────────┐
+                                             │   AI Provider      │
+                                             │ Ollama → Gemini    │
+                                             └────────────────────┘
+
+⸻
+
+2. Technology Stack
+
+Frontend
+
+* React
+* Vite
+* Tailwind CSS
+* React Router
+* Axios
+* Framer Motion
+
+Backend
+
+* Node.js
+* Express
+* Mongoose
+* JWT Authentication
+* Google OAuth
+
+AI / RAG
+
+* LangChain
+* FAISS
+* Ollama
+* Gemini API
+* LLaVA for image understanding
+* nomic-embed-text
+* gemini-embedding-001
+
+Database
+
+* MongoDB
+
+Deployment
+
+* Vercel — Frontend
+* Render — Backend
+* MongoDB — Database
+
+⸻
+
+3. Backend Architecture
+
+The backend follows a layered structure:
+
+Backend/
+├── controllers/
+│   ├── authController.js
+│   ├── chatController.js
+│   └── pdfController.js
 │
-├── Frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── services/
-│   │   ├── context/
-│   │   ├── hooks/
-│   │   ├── assets/
-│   │   ├── App.jsx
-│   │   └── main.jsx
-│   ├── vite.config.js
-│   ├── tailwind.config.js
-│   └── vercel.json
+├── routes/
+│   ├── authRoutes.js
+│   ├── chatRoutes.js
+│   └── pdfRoutes.js
 │
-├── README.md
-├── ARCHITECTURE.md
-└── TODO.md
-```
+├── models/
+│   ├── User.js
+│   ├── PDF.js
+│   └── Chat.js
+│
+├── services/
+│   ├── aiProvider.js
+│   └── embeddingProvider.js
+│
+├── utils/
+│   ├── fileExtractor.js
+│   └── ragService.js
+│
+└── server.js
 
----
+Responsibility
 
-# 🏛️ High-Level Architecture
+* Routes — Define API endpoints.
+* Controllers — Handle requests and responses.
+* Models — Define MongoDB schemas.
+* Services — Handle AI and embedding providers.
+* Utilities — Handle extraction, chunking, retrieval and vector operations.
+* Middleware — Handles authentication and request protection.
 
-```text
-┌──────────────────────────────────────────┐
-│              Frontend (React)            │
-│  - Authentication UI                     │
-│  - Dashboard                             │
-│  - Document Upload                       │
-│  - AI Chat Interface                     │
-│  - History & Settings                    │
-└──────────────────────────────────────────┘
-                    │
-                    │ HTTP / Axios
-                    ▼
-┌──────────────────────────────────────────┐
-│           Backend API (Express)          │
-│  - Auth Routes                           │
-│  - PDF Routes                            │
-│  - Chat Routes                           │
-│  - User Routes                           │
-│  - JWT Middleware                        │
-└──────────────────────────────────────────┘
-                    │
-        ┌───────────┴───────────┐
-        ▼                       ▼
-┌───────────────┐     ┌──────────────────┐
-│   MongoDB     │     │   File System    │
-│ Users         │     │ uploads/         │
-│ PDFs           │     │ vectorstore/     │
-│ Chats          │     └──────────────────┘
-└───────────────┘
-                    │
-                    ▼
-┌──────────────────────────────────────────┐
-│              RAG Service                 │
-│  - Text Extraction                       │
-│  - Chunking                              │
-│  - Embedding Generation                  │
-│  - FAISS Similarity Search               │
-│  - Context Retrieval                     │
-│  - Prompt Construction                   │
-└──────────────────────────────────────────┘
-                    │
-                    ▼
-┌──────────────────────────────────────────┐
-│            Ollama (Local AI)             │
-│  - llama3.2                              │
-│  - nomic-embed-text                      │
-└──────────────────────────────────────────┘
-```
+⸻
 
----
+4. Document Ingestion Pipeline
 
-# 🔐 Authentication Architecture
+When a user uploads a document:
 
-## Email / Password Flow
+Upload
+  │
+  ▼
+Authentication
+  │
+  ▼
+File Validation
+  │
+  ▼
+Text Extraction
+  │
+  ├── PDF
+  ├── DOCX
+  ├── TXT
+  ├── Markdown
+  ├── CSV
+  └── XLSX
+  │
+  ▼
+Page / Content Metadata
+  │
+  ▼
+Text Chunking
+  │
+  ▼
+Embedding Generation
+  │
+  ├── Ollama
+  │
+  └── Gemini
+  │
+  ▼
+FAISS Vector Store
+  │
+  ▼
+MongoDB Document Metadata
 
-```text
-User Login
-   ↓
-Express Auth Route
-   ↓
-bcrypt Password Verification
-   ↓
-JWT Token Generation
-   ↓
-Frontend stores token in localStorage
-   ↓
-Authenticated API Requests
-```
+For PDFs, page information is preserved during extraction so retrieved chunks can later be connected to the correct page.
 
-## Google OAuth Flow
+Each chunk stores metadata such as:
 
-```text
-Google Sign-In Button
-   ↓
-Google Identity Services
-   ↓
-Credential Token
-   ↓
-Backend /api/auth/google
-   ↓
-Verify Google Token
-   ↓
-Create / Fetch User
-   ↓
-Generate JWT
-   ↓
-Frontend Login Success
-```
+documentId
+fileName
+pageNumber
+chunkIndex
 
----
+This metadata is used for filtering and source citations.
 
-# 📄 Document Processing Pipeline
+⸻
 
-```text
-Upload PDF / DOCX / CSV / TXT
-        ↓
-Multer stores file in uploads/
-        ↓
-Extract text
-        ↓
-Store metadata in MongoDB
-        ↓
-Chunk text (1000 chars, 200 overlap)
-        ↓
-Generate embeddings (nomic-embed-text)
-        ↓
-Store vectors in FAISS
-```
+5. RAG Query Pipeline
 
----
+When a user asks a question:
 
-# 🧠 RAG Query Pipeline
-
-```text
 User Question
-      ↓
-Convert question to embedding
-      ↓
-FAISS similarity search
-      ↓
-Retrieve top relevant chunks
-      ↓
-Build context prompt
-      ↓
-Send prompt to llama3.2 via Ollama
-      ↓
-Generate grounded response
-      ↓
-Return answer + source documents
-```
+      │
+      ▼
+Authentication
+      │
+      ▼
+Document Scope
+      │
+      ├── All Documents
+      │
+      └── Selected Documents
+      │
+      ▼
+Query Embedding
+      │
+      ▼
+FAISS Similarity Search
+      │
+      ▼
+Relevance Filtering
+      │
+      ▼
+Relevant Chunks
+      │
+      ▼
+Context Construction
+      │
+      ▼
+AI Generation
+      │
+      ▼
+Answer + Sources
+      │
+      ▼
+SSE Streaming Response
 
----
+Retrieval
 
-# 📚 Vector Store Design
+FAISS performs vector similarity search over document chunks.
 
-- **Engine:** FAISS
-- **Storage:** `Backend/vectorstore/`
-- **Isolation:** Separate index per user
+The system additionally applies relevance filtering instead of blindly using a fixed number of chunks.
 
-Example:
+For document-specific chat, retrieved chunks are filtered using their documentId.
 
-```text
-vectorstore/
- ├── user_64f1a2...
- ├── user_64f1b3...
- └── user_64f1c4...
-```
+This prevents unrelated documents from being used as context.
 
----
+⸻
 
-# 🗄️ Database Schema
+6. AI Provider Architecture
 
-## User
+DocuMind AI supports two AI environments.
 
-```js
-{
-  name: String,
-  email: String,
-  password: String,
-  avatar: String,
-  isGoogleUser: Boolean,
-  createdAt: Date
-}
-```
+                    AI Request
+                        │
+                        ▼
+                 ┌──────────────┐
+                 │ AI Provider   │
+                 └──────┬───────┘
+                        │
+              ┌─────────┴─────────┐
+              │                   │
+              ▼                   ▼
+          Ollama                Gemini
+       Local Development       Production
+              │                   │
+              ▼                   ▼
+         Local Models        Gemini Models
 
-## PDF
+Local Development
 
-```js
-{
-  userId: ObjectId,
-  fileName: String,
-  originalName: String,
-  extractedText: String,
-  fileSize: Number,
-  uploadedAt: Date
-}
-```
+Ollama is used for local AI processing.
 
-## Chat
+LLM: llama3.2
+Embeddings: nomic-embed-text
+Vision: llava:7b
 
-```js
-{
-  userId: ObjectId,
-  question: String,
-  answer: String,
-  sourcePDFs: [String],
-  createdAt: Date
-}
-```
+This allows the application to run AI workloads locally without requiring a cloud API.
 
----
+Production
 
-# 📡 API Endpoints
+The deployed backend uses Gemini.
 
-## Authentication
+Generation:
+Gemini Flash
+Embeddings:
+gemini-embedding-001
 
-| Method | Endpoint |
-|--------|----------|
-| POST | `/api/auth/register` |
-| POST | `/api/auth/login` |
-| POST | `/api/auth/google` |
+The provider configuration is environment-based, so the frontend does not need to know which AI provider is being used.
 
-## Documents
+Fallback
 
-| Method | Endpoint |
-|--------|----------|
-| POST | `/api/pdf/upload` |
-| GET | `/api/pdf/list` |
-| DELETE | `/api/pdf/:id` |
+For text generation, Ollama is attempted first when configured.
 
-## Chat
+If Ollama is unavailable before generation starts, the system can fall back to Gemini.
 
-| Method | Endpoint |
-|--------|----------|
-| POST | `/api/chat/query` |
-| GET | `/api/chat/history` |
+Ollama
+   │
+   ├── Available ───────► Generate Response
+   │
+   └── Unavailable
+            │
+            ▼
+         Gemini
+            │
+            ▼
+      Generate Response
 
-## User
+The fallback happens at the provider layer and does not change the RAG pipeline.
 
-| Method | Endpoint |
-|--------|----------|
-| GET | `/api/user/profile` |
-| PUT | `/api/user/profile` |
+⸻
 
----
+7. Vector Store Architecture
 
-# 🎨 Frontend Architecture
+Vector stores are maintained separately for each user.
 
-### Pages
-- Landing
-- Login
-- Register
-- Dashboard
-- Chat
-- Documents
-- History
-- Settings
+Backend/vectorstore/
+user_<id>/
+├── faiss.index
+├── docstore.json
+└── embedding-meta.json
+user_<id>/gemini/
+├── faiss.index
+├── docstore.json
+└── embedding-meta.json
 
-### Components
-- Navbar
-- ChatBox
-- PDFUpload
-- PDFList
-- Avatar
-- ThemeToggle
+This provides:
 
-State is managed using React hooks and context.
+* User-level isolation
+* Provider-level isolation
+* Protection against embedding-dimension/provider mismatches
+* Independent Ollama and Gemini indexes
 
----
+The vector store can be rebuilt from document data stored in MongoDB.
 
-# 🌙 Theme System
+Re-indexing uses an atomic rebuild process so an existing valid index is not replaced by a partially built index.
 
-- Theme stored in localStorage
-- React Context manages global theme state
-- Tailwind `dark:` classes provide styling
-- UI updates instantly without page reload
+⸻
 
----
+8. Authentication & Security
 
-# 🚀 Runtime Environment
+Authentication uses:
 
-## Development
+JWT
++
+Google OAuth
 
-| Service | URL |
-|---------|-----|
-| Frontend | `http://localhost:3000` |
-| Backend | `http://localhost:5001` |
-| Ollama | `http://127.0.0.1:11434` |
+Protected API requests require an authenticated user.
 
-## Production
+Document and chat operations are scoped to the authenticated user’s ID.
 
-| Service | URL |
-|---------|-----|
-| Frontend | Vercel |
-| Backend | Node.js hosting |
-| Database | MongoDB Atlas |
+The backend verifies document ownership before allowing operations such as:
 
----
+* Document retrieval
+* Document-specific chat
+* File access
+* Chat history access
+* Document deletion
 
-# 🔄 Example Workflows
+Sensitive configuration such as:
 
-## Upload Flow
+MONGODB_URI
+JWT_SECRET
+GOOGLE_CLIENT_SECRET
+GEMINI_API_KEY
 
-```text
-Frontend Upload Form
-   ↓
-POST /api/pdf/upload
-   ↓
-Save file
-   ↓
-Extract text
-   ↓
-Save metadata in MongoDB
-   ↓
-Generate embeddings
-   ↓
-Store in FAISS
-   ↓
-Return success response
-```
+is stored through environment variables and is not exposed to the frontend.
 
-## Chat Flow
+⸻
 
-```text
-User asks question
-   ↓
-POST /api/chat/query
-   ↓
-Load user's FAISS index
-   ↓
-Retrieve relevant chunks
-   ↓
-Generate AI response
-   ↓
-Save chat history
-   ↓
-Return answer to frontend
-```
+9. Image Understanding
 
----
+DocuMind AI also supports image-based conversations.
 
-# 🔧 Key Design Decisions
+Image
+  │
+  ▼
+Frontend
+  │
+  ▼
+Backend /ask-image
+  │
+  ▼
+Vision Model
+(LLaVA)
+  │
+  ▼
+Image Understanding
+  │
+  ▼
+Response
 
-### Local AI Inference
-- No external AI API dependency
-- Better privacy
-- No token cost
+Images can be combined with user text.
 
-### FAISS Vector Store
-- Fast semantic search
-- Lightweight local storage
-- Easy LangChain integration
+Image-only requests are handled separately from the document RAG pipeline unless document context is explicitly requested.
 
-### JWT Authentication
-- Stateless sessions
-- Easy frontend integration
-- Scalable architecture
+⸻
 
----
+10. Streaming Responses
 
-# 📈 Scalability Notes
+Text responses are delivered using Server-Sent Events (SSE).
 
-- MongoDB indexes on `userId`
-- Per-user vector indexes
-- File storage can migrate to cloud storage
-- Ollama can be containerized with Docker
-- Backend APIs remain stateless
+User
+ │
+ ▼
+Backend
+ │
+ ▼
+RAG Retrieval
+ │
+ ▼
+AI Generation
+ │
+ ├── token ──► Frontend
+ ├── token ──► Frontend
+ ├── token ──► Frontend
+ │
+ └── sources ─► Frontend
 
----
+This allows the UI to display the response progressively instead of waiting for the complete AI response.
 
-# 🧪 Implemented Features
+Sources are sent as structured data and displayed as clickable citations.
 
-- ✅ Email/password authentication
-- ✅ Google OAuth login
-- ✅ JWT authentication
-- ✅ PDF/DOCX/TXT/CSV upload
-- ✅ Semantic document search
-- ✅ AI chat with documents
-- ✅ Multi-document retrieval
-- ✅ Chat history
-- ✅ User profile & avatar
-- ✅ Dark/light theme
-- ✅ Local Ollama integration
-- ✅ FAISS vector storage
+⸻
 
----
+11. Database Architecture
 
-# 🔮 Future Enhancements
+MongoDB stores persistent application data.
 
-- OCR for scanned documents
-- Document-specific chat selection
-- Streaming AI responses
-- Team workspaces
-- Role-based access control
-- Cloud vector database support
-- Multi-agent workflows
+MongoDB
+│
+├── Users
+│   ├── authentication data
+│   └── account information
+│
+├── PDFs
+│   ├── file metadata
+│   ├── extracted text
+│   ├── page information
+│   └── ownership
+│
+└── Chats
+    ├── messages
+    ├── document scope
+    ├── sources
+    └── image metadata
 
----
+MongoDB stores extracted document content so the vector index can be rebuilt when necessary.
 
-# 📝 Summary
+⸻
 
-DocuMind AI is a **full-stack RAG application** with a clear separation of concerns:
+12. Deployment Architecture
 
-- **Frontend:** User interface and interactions
-- **Backend:** APIs, authentication, and business logic
-- **RAG Service:** Document indexing and semantic retrieval
-- **FAISS:** Vector similarity search
-- **Ollama:** Local LLM inference
+                 Internet
+                    │
+                    ▼
+        ┌─────────────────────┐
+        │       Vercel        │
+        │   React Frontend    │
+        └──────────┬──────────┘
+                   │ HTTPS
+                   ▼
+        ┌─────────────────────┐
+        │       Render        │
+        │ Node + Express API  │
+        └───────┬─────┬───────┘
+                │     │
+                │     └──────────────► Gemini API
+                │
+                ▼
+        ┌─────────────────────┐
+        │       MongoDB       │
+        │ Persistent Database │
+        └─────────────────────┘
 
-The architecture provides a secure, private, and extensible platform for intelligent document analysis and conversational AI.
-```
+Production
+
+* Frontend → Vercel
+* Backend → Render
+* Database → MongoDB
+* AI → Gemini
+* Authentication → JWT + Google OAuth
+
+Local Development
+
+React/Vite
+    │
+    ▼
+Node/Express
+    │
+    ├── MongoDB
+    │
+    └── Ollama
+          ├── llama3.2
+          ├── nomic-embed-text
+          └── llava
+
+⸻
+
+13. Storage Consideration
+
+The current portfolio deployment uses Render’s free service.
+
+The application stores uploaded files on the backend filesystem, while extracted document content is also stored in MongoDB.
+
+Because the free Render filesystem is ephemeral, uploaded files may disappear after service restarts or redeployments.
+
+The application can still rebuild the RAG index from MongoDB-stored extracted content, but direct file viewing/downloading may require persistent object storage.
+
+A future production architecture can use:
+
+Frontend
+   │
+Backend
+   │
+   ├── MongoDB ─────── Metadata + extracted content
+   │
+   └── Object Storage ─ Original files
+
+Possible future storage solutions include S3-compatible object storage or managed cloud storage.
+
+⸻
+
+14. Design Principles
+
+The architecture is designed around:
+
+* Modularity — AI providers and embeddings are isolated behind services.
+* User isolation — Documents and vector stores are scoped per user.
+* Provider flexibility — Local Ollama and cloud Gemini can be switched through configuration.
+* Grounded generation — AI answers are based on retrieved document context.
+* Source traceability — Retrieved chunks retain document and page metadata.
+* Fault tolerance — Provider fallback and atomic vector-store rebuilds reduce failure impact.
+* Scalability — AI, database, vector search and storage layers can be replaced or scaled independently.
+
+⸻
+
+15. Overall Data Flow
+
+                         ┌──────────────┐
+                         │     User     │
+                         └──────┬───────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │ React Frontend  │
+                       └────────┬────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │ Express Backend │
+                       └───────┬─────────┘
+                               │
+             ┌─────────────────┼─────────────────┐
+             │                 │                 │
+             ▼                 ▼                 ▼
+        Authentication    Documents           Chat
+             │                 │                 │
+             │                 ▼                 ▼
+             │             Extraction        Retrieval
+             │                 │                 │
+             │                 ▼                 ▼
+             │              Chunks           FAISS Search
+             │                 │                 │
+             │                 ▼                 ▼
+             │             Embeddings         Context
+             │                 │                 │
+             │                 ▼                 ▼
+             │              FAISS           AI Provider
+             │                                   │
+             │                          ┌────────┴────────┐
+             │                          │                 │
+             │                       Ollama            Gemini
+             │
+             ▼
+          MongoDB
+             │
+             ├── Users
+             ├── Documents
+             └── Chats
+
+This architecture keeps the application layer, RAG layer, AI provider layer, authentication layer, and persistence layer separated, making DocuMind AI easier to maintain, test, and extend.

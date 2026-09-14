@@ -1,209 +1,211 @@
-# 🧠 DocuMind AI
-
-**AI-Powered Document Intelligence Platform**
-
-DocuMind AI is a full-stack **RAG (Retrieval-Augmented Generation)** application that combines conversational AI with advanced document intelligence. Upload documents, perform semantic searches, and chat with your knowledge base using local LLMs powered by **Ollama**.
-
-[![Stack](https://img.shields.io/badge/Stack-MERN-green.svg)]()
-[![AI](https://img.shields.io/badge/AI-Ollama-blue.svg)]()
-[![Vector Search](https://img.shields.io/badge/Vector-FAISS-orange.svg)]()
-
+# DocuMind AI
+> An AI-powered document assistant that lets you upload documents, ask questions, and get grounded answers with source citations using Retrieval-Augmented Generation (RAG).
+## 🚀 Live Demo
+- **Frontend:** https://docu-mind-ai-seven-navy.vercel.app
+- **Backend:** https://documind-ai-backend-aisl.onrender.com
 ---
-
-## 🌐 Live Demo
-
-**Frontend:** https://docu-mind-ai-seven-navy.vercel.app
-
-> ⚠️ The live demo currently hosts the frontend only. AI features require the backend and Ollama to run locally.
-
----
-
 ## ✨ Features
-
-### 🤖 AI Assistant
-
-- Chat with uploaded documents
-- Semantic document search
-- Multi-document question answering
-- Automatic document summarization
-- Context-aware AI responses
-
-### 📄 Supported File Types
-
-- PDF
-- DOCX
-- TXT
-- Markdown
-- CSV
-- XLSX
-
-### 🔍 Advanced RAG Pipeline
-
-- Text extraction
-- Recursive text chunking
-- Embedding generation with `nomic-embed-text`
-- FAISS vector search
-- Intelligent context retrieval
-- Response generation with `llama3.2`
-
-### 🔐 Authentication & Security
-
-- JWT-based authentication
-- Google OAuth login
-- Secure user sessions
-- User-specific document isolation
-
-### 🎨 User Experience
-
-- Modern responsive UI
-- Dark / Light mode
-- Document dashboard
-- Chat history management
-
+### 📄 Document Intelligence
+- Upload and process:
+  - PDF
+  - DOCX
+  - TXT
+  - Markdown
+  - CSV
+  - XLSX
+- Automatic text extraction and chunking
+- Page-aware PDF processing
+- Document metadata stored in MongoDB
+- Per-user document isolation
+### 🤖 AI-Powered RAG
+- Retrieval-Augmented Generation using FAISS
+- Semantic similarity search
+- Relevance filtering before generation
+- Grounded responses based on document context
+- Prevents unrelated documents from being used as context
+- Supports chatting with:
+  - All documents
+  - Selected documents
+  - A single document
+### 📚 Source Citations
+- Answers include document sources
+- PDF citations include page information when available
+- Sources are clickable from the chat interface
+- Retrieved chunks retain document and page metadata
+### ⚡ Streaming Responses
+- AI responses stream progressively using SSE
+- Chat UI updates while the model is generating
+- Structured source information is returned with the final response
+### 🧠 Multiple AI Providers
+#### Local Development
+Uses Ollama:
+- `llama3.2` — text generation
+- `nomic-embed-text` — embeddings
+- `llava:7b` — image understanding
+#### Production
+Uses Google Gemini:
+- Gemini Flash — text generation
+- `gemini-embedding-001` — embeddings
+The AI provider is configurable through environment variables.
+### 🔄 AI Provider Fallback
+When configured for Ollama, the application can fall back to Gemini if Ollama is unavailable before generation starts.
+### 🖼️ Image Chat
+- Attach images to conversations
+- Paste images directly into the chat
+- Drag and drop images
+- Preview attached images
+- Ask questions about images
+- Supports image + text conversations
+- Uses LLaVA for vision processing
+### 🔐 Authentication
+- JWT authentication
+- Google OAuth
+- Protected API routes
+- User-specific documents and chats
+- Ownership validation for document operations
+### 🗂️ Document Index Management
+- Provider-specific FAISS indexes
+- Ollama and Gemini indexes remain isolated
+- Manual document re-indexing
+- Atomic vector-store rebuilds
+- Existing valid indexes are preserved if a rebuild fails
+### 💬 Chat Experience
+- Persistent chat history
+- Document-scoped conversations
+- Copy responses
+- Edit and regenerate messages
+- Voice input support
+- Image attachments
+- Source citations
+### 🎨 Responsive UI
+- Responsive dashboard
+- Mobile navigation drawer
+- Document search
+- Dark/light theme
+- Responsive chat interface
+- Clean document management UI
 ---
-
-## 🏛️ System Architecture
-
+## 🏗️ Architecture
 ```text
-Upload Document
-      ↓
+                         ┌──────────────────────┐
+                         │       Frontend       │
+                         │   React + Vite       │
+                         │   Tailwind CSS        │
+                         └──────────┬───────────┘
+                                    │
+                              HTTP / SSE
+                                    │
+                                    ▼
+                         ┌──────────────────────┐
+                         │       Backend        │
+                         │   Node.js + Express  │
+                         └──────────┬───────────┘
+                                    │
+             ┌──────────────────────┼──────────────────────┐
+             │                      │                      │
+             ▼                      ▼                      ▼
+      ┌─────────────┐       ┌─────────────┐       ┌──────────────┐
+      │    Auth     │       │  Documents  │       │     Chat     │
+      │ JWT / OAuth │       │  + RAG      │       │   + Vision   │
+      └─────────────┘       └──────┬──────┘       └──────────────┘
+                                   │
+                                   ▼
+                            ┌─────────────┐
+                            │  MongoDB    │
+                            │ Metadata +  │
+                            │ extracted   │
+                            │ content     │
+                            └──────┬──────┘
+                                   │
+                                   ▼
+                            ┌─────────────┐
+                            │    FAISS    │
+                            │  Vector DB  │
+                            └──────┬──────┘
+                                   │
+                                   ▼
+                         ┌────────────────────┐
+                         │   AI Provider      │
+                         │ Ollama / Gemini    │
+                         └────────────────────┘
+
+For detailed technical architecture, see ARCHITECTURE.md⁠￼.
+
+⸻
+
+🧩 Tech Stack
+
+Layer	Technologies
+Frontend	React, Vite, Tailwind CSS
+Routing	React Router
+HTTP	Axios
+UI Animation	Framer Motion
+Backend	Node.js, Express
+Database	MongoDB, Mongoose
+Authentication	JWT, Google OAuth
+RAG	LangChain, FAISS
+Local AI	Ollama
+Cloud AI	Google Gemini
+Embeddings	nomic-embed-text, gemini-embedding-001
+Vision	LLaVA
+Streaming	Server-Sent Events (SSE)
+Frontend Deployment	Vercel
+Backend Deployment	Render
+
+⸻
+
+🔄 RAG Pipeline
+
+Document Upload
+      │
+      ▼
+File Validation
+      │
+      ▼
 Text Extraction
-      ↓
-Recursive Chunking
-      ↓
-Embeddings (nomic-embed-text)
-      ↓
+      │
+      ▼
+Page / Metadata Preservation
+      │
+      ▼
+Text Chunking
+      │
+      ▼
+Embedding Generation
+      │
+      ▼
 FAISS Vector Store
-      ↓
+      │
+      ▼
+User Question
+      │
+      ▼
+Query Embedding
+      │
+      ▼
 Similarity Search
-      ↓
-Retrieved Context
-      ↓
-Ollama (llama3.2)
-      ↓
-AI Response
-```
+      │
+      ▼
+Relevance Filtering
+      │
+      ▼
+Relevant Chunks
+      │
+      ▼
+Context Construction
+      │
+      ▼
+AI Generation
+      │
+      ▼
+Answer + Sources
 
-For a detailed technical breakdown, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+⸻
 
----
+📁 Project Structure
 
-## 🛠️ Tech Stack
-
-| Layer | Technologies |
-|-------|--------------|
-| **Frontend** | React.js, Vite, Tailwind CSS, Axios, React Router |
-| **Backend** | Node.js, Express.js, MongoDB, Mongoose |
-| **AI / RAG** | Ollama, LangChain, FAISS |
-| **Embedding Model** | `nomic-embed-text` |
-| **LLM** | `llama3.2` |
-| **Database** | MongoDB Atlas |
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Node.js (v18+ recommended)
-- MongoDB Atlas account
-- Ollama installed locally
-
----
-
-## 1️⃣ Clone the Repository
-
-```bash
-git clone https://github.com/Soumya-xo/DocuMind-AI.git
-cd DocuMind-AI
-```
-
----
-
-## 2️⃣ Backend Setup
-
-```bash
-cd Backend
-npm install
-```
-
-Create a `.env` file inside `Backend/`:
-
-```env
-MONGODB_URI=your_mongodb_connection_string
-JWT_SECRET=your_jwt_secret_key
-PORT=5001
-
-GOOGLE_CLIENT_ID=your_google_client_id
-GOOGLE_CLIENT_SECRET=your_google_client_secret
-```
-
-Start the backend server:
-
-```bash
-npm run dev
-```
-
-Backend runs at **http://localhost:5001**
-
----
-
-## 3️⃣ Frontend Setup
-
-```bash
-cd ../Frontend
-npm install
-```
-
-Create a `.env` file inside `Frontend/`:
-
-```env
-VITE_API_URL=http://localhost:5001
-VITE_GOOGLE_CLIENT_ID=your_google_client_id
-```
-
-Start the frontend:
-
-```bash
-npm run dev
-```
-
-Frontend runs at **http://localhost:3000**
-
----
-
-## 4️⃣ Ollama Setup
-
-Start Ollama:
-
-```bash
-ollama serve
-```
-
-In another terminal, pull the required models:
-
-```bash
-ollama pull llama3.2
-ollama pull nomic-embed-text
-```
-
-Verify installation:
-
-```bash
-ollama list
-```
-
-Expected models:
-
-- `llama3.2`
-- `nomic-embed-text`
-
----
-
-## 📂 Project Structure
-
-```text
 DocuMind-AI/
+│
 ├── Backend/
 │   ├── controllers/
 │   ├── middleware/
@@ -212,144 +214,248 @@ DocuMind-AI/
 │   ├── services/
 │   ├── utils/
 │   ├── uploads/
-│   └── vectorstore/
+│   ├── vectorstore/
+│   ├── server.js
+│   └── package.json
+│
 ├── Frontend/
 │   ├── src/
 │   │   ├── components/
 │   │   ├── pages/
 │   │   ├── services/
-│   │   └── context/
-│   └── public/
+│   │   └── App.jsx
+│   ├── public/
+│   └── package.json
+│
 ├── ARCHITECTURE.md
 ├── TODO.md
-└── README.md
-```
+├── README.md
+└── .gitignore
 
----
+⸻
 
-## 🎯 Core Capabilities
+⚙️ Local Setup
 
-| Feature | Description |
-|---------|-------------|
-| **Document Chat** | Ask questions about uploaded documents with AI-generated answers |
-| **Semantic Search** | Retrieve information by meaning rather than keywords |
-| **Multi-Document Q&A** | Query across all indexed documents |
-| **Summarization** | Generate concise summaries of large documents |
-| **Context Retrieval** | Ground responses using relevant document chunks |
+1. Clone the repository
 
----
+git clone https://github.com/Soumya-xo/DocuMind-AI.git
+cd DocuMind-AI
 
-## 🧪 Local Demo Checklist
+2. Install dependencies
 
-- [x] User registration & login
-- [x] Google OAuth login
-- [x] PDF upload
-- [x] Vector embedding generation
-- [x] FAISS indexing
-- [x] AI chat with uploaded documents
-- [x] Multi-document retrieval
-- [x] MongoDB persistence
-- [x] Dark / Light theme
+cd Backend
+npm install
+cd ../Frontend
+npm install
 
----
+3. Configure environment variables
 
-## 📸 Screenshots
+Create:
 
-Create a `screenshots/` folder and add project images.
+Backend/.env
+Frontend/.env
 
-```md
-![Landing Page](screenshots/landing.png)
-![Dashboard](screenshots/dashboard.png)
-![AI Chat](screenshots/chat.png)
-```
+Backend
 
----
+MONGODB_URI=your_mongodb_connection_string
+JWT_SECRET=your_jwt_secret
+PORT=5001
+GOOGLE_CLIENT_ID=your_google_client_id
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+AI_EMBEDDING_PROVIDER=ollama
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=your_gemini_model
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 
-## 🔒 Environment Variables
+Frontend
 
-### Backend
+VITE_API_URL=http://localhost:5001
+VITE_GOOGLE_CLIENT_ID=your_google_client_id
 
-```env
-MONGODB_URI=
-JWT_SECRET=
-PORT=
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-```
+Never commit .env files or API keys to GitHub.
 
-### Frontend
+⸻
 
-```env
-VITE_API_URL=
-VITE_GOOGLE_CLIENT_ID=
-```
+🦙 Ollama Setup
 
----
+Install and run Ollama locally, then pull the required models:
 
-## ⚠️ Important Notes
+ollama pull llama3.2
+ollama pull nomic-embed-text
+ollama pull llava:7b
 
-- Ollama must be running locally for AI features to work.
-- Uploaded files and vector indexes are intentionally excluded from Git tracking.
-- This project is designed for **local/private document intelligence** workflows.
-- The deployed Vercel frontend does not include the local Ollama backend.
+Make sure Ollama is running before starting the backend.
 
----
+The local application uses:
 
-## 🚀 Deployment
+Ollama
+├── llama3.2
+├── nomic-embed-text
+└── llava:7b
 
-### Frontend (Vercel)
+⸻
 
-The frontend is deployed on **Vercel**:
+▶️ Run Locally
 
-➡️ https://docu-mind-ai-seven-navy.vercel.app
+Start Backend
 
-### Backend
+cd Backend
+npm start
 
-The backend can be deployed on platforms such as:
+Backend runs on:
 
-- Render
-- Railway
-- Fly.io
-- AWS EC2
-- DigitalOcean
+http://localhost:5001
 
-> Running Ollama on free cloud tiers is generally unreliable due to memory and CPU limitations. Local execution is recommended.
+Start Frontend
 
----
+In another terminal:
 
-## 🛣️ Future Roadmap
+cd Frontend
+npm run dev
 
-- [ ] Per-document chat filter
-- [ ] Streaming AI responses
-- [ ] OCR for scanned PDFs
-- [ ] Docker support
-- [ ] Full cloud deployment
-- [ ] Advanced analytics dashboard
-- [ ] Multi-agent document analysis
+Frontend runs on:
 
-See [TODO.md](./TODO.md) for the complete roadmap.
+http://localhost:3000
 
----
+⸻
 
-## 👨‍💻 Author
+🔎 Re-index Documents
 
-**Soumya Nayak**  
-MCA (Generative AI) – SRM Institute of Science and Technology
+If the embedding provider or vector index needs to be rebuilt, use the Re-index Documents option from:
 
-- GitHub: [Soumya-xo](https://github.com/Soumya-xo)
+Settings → Document Index → Re-index Documents
 
----
+The backend rebuilds the active provider’s vector index from document data stored in MongoDB.
 
-## 🤝 Contributing
+⸻
 
-Contributions, suggestions, and feedback are welcome. Feel free to open an issue or submit a pull request.
+🔐 Security
 
----
+DocuMind AI implements several security measures:
 
-## 📜 License
+* JWT-protected API routes
+* Google OAuth authentication
+* User-level document isolation
+* Document ownership validation
+* Chat ownership validation
+* Provider-specific vector-store isolation
+* Environment-based secret management
+* CORS origin restrictions
+* No secrets exposed to the frontend
 
-This project is created for **educational and portfolio purposes**.
+⸻
 
----
+☁️ Deployment
 
-⭐ If you found this project useful, please consider giving it a **star** on GitHub!
+Frontend
+
+The React frontend is deployed on Vercel.
+
+Vercel
+   │
+   ▼
+React + Vite Frontend
+
+Backend
+
+The Node.js backend is deployed on Render.
+
+Render
+   │
+   ▼
+Node.js + Express API
+   │
+   ├── MongoDB
+   └── Gemini API
+
+Production AI
+
+Production uses Gemini for:
+
+Text Generation
+       +
+Embeddings
+
+Local development uses Ollama instead.
+
+⸻
+
+⚠️ Production Storage Note
+
+The current portfolio deployment uses Render’s free service.
+
+Render’s free filesystem is ephemeral, so uploaded original files stored locally may disappear after a service restart or redeployment.
+
+Extracted document content is also stored in MongoDB, allowing the RAG index to be rebuilt when necessary.
+
+For a production-scale deployment, original files should be moved to persistent object storage such as S3-compatible storage or another managed storage provider.
+
+⸻
+
+📌 Current Status
+
+DocuMind AI currently supports:
+
+* ✅ Multi-format document upload
+* ✅ PDF page-aware extraction
+* ✅ Semantic RAG search
+* ✅ FAISS vector storage
+* ✅ Per-document chat
+* ✅ Multi-document chat
+* ✅ Source citations
+* ✅ Clickable citations
+* ✅ Streaming AI responses
+* ✅ Ollama local AI
+* ✅ Gemini production AI
+* ✅ AI provider fallback
+* ✅ Multiple embedding providers
+* ✅ Image understanding
+* ✅ LLaVA vision
+* ✅ JWT authentication
+* ✅ Google OAuth
+* ✅ Persistent chat history
+* ✅ Document re-indexing
+* ✅ Atomic vector-store rebuilding
+* ✅ Responsive UI
+* ✅ Vercel + Render deployment
+
+⸻
+
+🛣️ Future Improvements
+
+Potential future improvements include:
+
+* Hybrid keyword + semantic search
+* Cross-encoder / LLM reranking
+* Automated RAG evaluation and benchmarks
+* OCR for scanned documents
+* Better table and image extraction
+* Conversation memory
+* Document tagging and filtering
+* Persistent object storage
+* Dockerized deployment
+* Advanced analytics
+* Improved scalability and caching
+* Team workspaces and collaboration
+
+⸻
+
+📖 Documentation
+
+* README.md⁠￼ — Project overview, features, setup and usage
+* ARCHITECTURE.md⁠￼ — Detailed technical architecture
+* TODO.md⁠￼ — Future improvements and roadmap
+
+⸻
+
+👨‍💻 Author
+
+Soumya Ranjan Nayak
+
+Built as a full-stack AI/RAG project to explore document intelligence, retrieval systems, AI provider abstraction, and production deployment.
+
+⸻
+
+📄 License
+
+This project is intended primarily as a portfolio and learning project.
