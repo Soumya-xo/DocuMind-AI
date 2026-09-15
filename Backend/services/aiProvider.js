@@ -34,6 +34,20 @@ const OLLAMA_TIMEOUT_MS = process.env.OLLAMA_TIMEOUT_MS
 // change in case a newer/renamed Flash model becomes the better default.
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
+// Backup Gemini model used only when GEMINI_MODEL itself is temporarily
+// unavailable (503/UNAVAILABLE) after retries — see streamWithGemini below.
+const GEMINI_FALLBACK_MODEL =
+  process.env.GEMINI_FALLBACK_MODEL || "gemini-3.6-flash";
+
+// Total attempts against the PRIMARY Gemini model before giving up on it and
+// trying the fallback model once. 3 attempts = 1 initial try + 2 retries.
+const GEMINI_MAX_ATTEMPTS = 3;
+
+// Base delay for the exponential backoff between primary-model retries:
+// attempt 1 -> ~1s, attempt 2 -> ~2s (base * 2^(attempt-1)), each with a
+// little random jitter added so concurrent requests don't retry in lockstep.
+const GEMINI_RETRY_BASE_DELAY_MS = 1000;
+
 const getOllamaLLM = () =>
   new ChatOllama({
     model: OLLAMA_MODEL,
@@ -119,6 +133,36 @@ const isOllamaProviderError = (err) => {
   return false;
 };
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Adds up to ~30% random jitter on top of a backoff delay so that many
+// concurrent requests retrying at once don't all hit Gemini again at the
+// exact same instant.
+const withJitter = (ms) => Math.round(ms + Math.random() * ms * 0.3);
+
+// True only for errors indicating a TEMPORARY problem with the Gemini
+// service itself (503/UNAVAILABLE/other 5xx) — never for client-side
+// errors (bad API key, bad/unknown model name, malformed request), which
+// must fail immediately instead of being retried or falling back. The
+// @google/genai SDK throws an `ApiError` with a numeric `.status` (the HTTP
+// status code) and a `.message` that is the JSON-stringified error body
+// from the API, which for 5xx responses typically includes a `status` field
+// such as "UNAVAILABLE" — both are checked since either can be present.
+const isRetryableGeminiError = (err) => {
+  if (!err) return false;
+
+  if (typeof err.status === "number") {
+    return err.status >= 500 && err.status < 600;
+  }
+
+  const message = err.message || "";
+  if (/\bUNAVAILABLE\b/i.test(message)) return true;
+  if (/temporarily unavailable|service unavailable/i.test(message)) return true;
+  if (/"code"\s*:\s*5\d{2}\b/.test(message)) return true;
+
+  return false;
+};
+
 const withTimeout = (promise, ms, label) => {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -137,11 +181,15 @@ const extractText = (response) => {
   return typeof content === "string" ? content : String(content ?? "");
 };
 
-async function generateWithGemini(prompt) {
+// Calls Gemini's non-streaming generateContent for `model` and returns the
+// text. Kept separate from generateWithGemini so both the primary model
+// (with retries) and the fallback model (tried once) can use the exact same
+// call logic below.
+async function callGeminiModel(model, prompt) {
   const ai = getGeminiClient();
 
   const response = await ai.models.generateContent({
-    model: GEMINI_MODEL,
+    model,
     contents: prompt,
   });
 
@@ -154,16 +202,139 @@ async function generateWithGemini(prompt) {
   return text;
 }
 
-async function* streamWithGemini(prompt) {
+/**
+ * Generate a complete response from the primary Gemini model (GEMINI_MODEL),
+ * with the same resilience to temporary 503/UNAVAILABLE errors as
+ * streamWithGemini:
+ *
+ *   - Retry the primary model with bounded exponential backoff + jitter, up
+ *     to GEMINI_MAX_ATTEMPTS attempts total, but only for retryable errors.
+ *   - If the primary model is still failing with a retryable error after
+ *     those attempts, try GEMINI_FALLBACK_MODEL once.
+ *   - A non-retryable error (bad API key, bad model, 4xx, ...) is thrown
+ *     immediately with no retry and no fallback.
+ */
+async function generateWithGemini(prompt) {
+  let lastErr;
+
+  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await callGeminiModel(GEMINI_MODEL, prompt);
+    } catch (err) {
+      lastErr = err;
+
+      if (!isRetryableGeminiError(err) || attempt === GEMINI_MAX_ATTEMPTS) {
+        break;
+      }
+
+      const delay = withJitter(GEMINI_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+      console.warn(
+        `[aiProvider] Gemini primary attempt ${attempt} failed with ${err.status || err.name}, retrying in ~${delay}ms...`,
+      );
+      await sleep(delay);
+    }
+  }
+
+  if (!isRetryableGeminiError(lastErr)) {
+    throw lastErr;
+  }
+
+  console.warn(
+    `[aiProvider] Gemini primary exhausted retries, using fallback model ${GEMINI_FALLBACK_MODEL}`,
+  );
+
+  const text = await callGeminiModel(GEMINI_FALLBACK_MODEL, prompt);
+
+  console.warn("[aiProvider] Gemini fallback succeeded");
+
+  return text;
+}
+
+// Opens a Gemini stream for `model` and yields non-empty text chunks. Kept
+// separate from streamWithGemini so both the primary model (with retries)
+// and the fallback model (tried once) can use the exact same streaming
+// logic below.
+async function* streamGeminiModel(model, prompt) {
   const ai = getGeminiClient();
 
   const stream = await ai.models.generateContentStream({
-    model: GEMINI_MODEL,
+    model,
     contents: prompt,
   });
 
   for await (const chunk of stream) {
     if (chunk.text) yield chunk.text;
+  }
+}
+
+/**
+ * Stream from the primary Gemini model (GEMINI_MODEL), with resilience to
+ * temporary 503/UNAVAILABLE errors:
+ *
+ *   - If opening the stream / getting its first chunk fails with a
+ *     retryable error, retry the primary model with bounded exponential
+ *     backoff + jitter, up to GEMINI_MAX_ATTEMPTS attempts total.
+ *   - If the primary model is still failing with a retryable error after
+ *     those attempts, try GEMINI_FALLBACK_MODEL once.
+ *   - A non-retryable error (bad API key, bad model, 4xx, ...) is thrown
+ *     immediately with no retry and no fallback.
+ *
+ * Critically, this retry/fallback logic only ever applies BEFORE any output
+ * has been produced. As soon as a model successfully yields its first
+ * chunk, this function commits to that stream for the rest of the
+ * response — a failure partway through is surfaced as a normal stream
+ * error, never a trigger to restart with another model (which could
+ * duplicate or corrupt what's already been streamed to the client).
+ */
+async function* streamWithGemini(prompt) {
+  let lastErr;
+
+  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt++) {
+    const iterator = streamGeminiModel(GEMINI_MODEL, prompt)[Symbol.asyncIterator]();
+    let first;
+
+    try {
+      first = await iterator.next();
+    } catch (err) {
+      lastErr = err;
+
+      if (!isRetryableGeminiError(err) || attempt === GEMINI_MAX_ATTEMPTS) {
+        break;
+      }
+
+      const delay = withJitter(GEMINI_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1));
+      console.warn(
+        `[aiProvider] Gemini primary attempt ${attempt} failed with ${err.status || err.name}, retrying in ~${delay}ms...`,
+      );
+      await sleep(delay);
+      continue;
+    }
+
+    // Primary model produced (or ended with) a result without erroring —
+    // committed to it. No retry/fallback can happen past this point.
+    if (!first.done) yield first.value;
+    for await (const text of { [Symbol.asyncIterator]: () => iterator }) {
+      yield text;
+    }
+    return;
+  }
+
+  if (!isRetryableGeminiError(lastErr)) {
+    throw lastErr;
+  }
+
+  console.warn(
+    `[aiProvider] Gemini primary exhausted retries, using fallback model ${GEMINI_FALLBACK_MODEL}`,
+  );
+
+  const fallbackIterator = streamGeminiModel(GEMINI_FALLBACK_MODEL, prompt)[Symbol.asyncIterator]();
+  const first = await fallbackIterator.next();
+
+  console.warn("[aiProvider] Gemini fallback succeeded");
+
+  if (!first.done) yield first.value;
+  for await (const text of { [Symbol.asyncIterator]: () => fallbackIterator }) {
+    yield text;
   }
 }
 
