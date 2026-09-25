@@ -7,8 +7,9 @@ import Groq from "groq-sdk";
 // tried first and Gemini used ONLY as a fallback for provider-level
 // failures (Ollama unreachable, timed out, or returning a server error).
 // Groq is a further, LAST-RESORT fallback used only when both the Gemini
-// primary and Gemini fallback models fail with a temporary (5xx/UNAVAILABLE)
-// error — see generateWithGemini/streamWithGemini below.
+// primary and Gemini fallback models fail with a temporary error (5xx,
+// UNAVAILABLE, or 429/RESOURCE_EXHAUSTED quota exceeded) — see
+// generateWithGemini/streamWithGemini below.
 //
 // This module is the single place that decides "which LLM answers this
 // prompt" for text chat. ragService.js builds prompts/RAG context and calls
@@ -39,7 +40,8 @@ const OLLAMA_TIMEOUT_MS = process.env.OLLAMA_TIMEOUT_MS
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 
 // Backup Gemini model used only when GEMINI_MODEL itself is temporarily
-// unavailable (503/UNAVAILABLE) after retries — see streamWithGemini below.
+// unavailable (503/UNAVAILABLE) or rate-limited (429/RESOURCE_EXHAUSTED)
+// after retries — see streamWithGemini below.
 const GEMINI_FALLBACK_MODEL =
   process.env.GEMINI_FALLBACK_MODEL || "gemini-3.6-flash";
 
@@ -53,9 +55,10 @@ const GEMINI_MAX_ATTEMPTS = 3;
 const GEMINI_RETRY_BASE_DELAY_MS = 1000;
 
 // Emergency fallback used only when BOTH Gemini models (primary, then
-// fallback) have failed with a temporary 5xx/UNAVAILABLE error. Not used
-// for embeddings — AI_EMBEDDING_PROVIDER/GEMINI_EMBEDDING_MODEL are
-// unaffected and continue to use Gemini exclusively.
+// fallback) have failed with a temporary error (5xx/UNAVAILABLE or
+// 429/RESOURCE_EXHAUSTED quota exceeded). Not used for embeddings —
+// AI_EMBEDDING_PROVIDER/GEMINI_EMBEDDING_MODEL are unaffected and continue
+// to use Gemini exclusively.
 const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 const getOllamaLLM = () =>
@@ -174,25 +177,31 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const withJitter = (ms) => Math.round(ms + Math.random() * ms * 0.3);
 
 // True only for errors indicating a TEMPORARY problem with the provider
-// itself (503/UNAVAILABLE/other 5xx) — never for client-side errors (bad
-// API key, bad/unknown model name, malformed request), which must fail
-// immediately instead of being retried or falling back. Despite the name,
-// this is also used for Groq's `APIError` (groq-sdk), not just Gemini's:
-// both SDKs throw an error with a numeric `.status` (the HTTP status code)
-// and a `.message` that is the JSON-stringified error body from the API,
-// which for 5xx responses typically includes a `status`/`type` field such
-// as "UNAVAILABLE" — both are checked since either can be present.
+// itself — 503/UNAVAILABLE/other 5xx, or 429/RESOURCE_EXHAUSTED (rate
+// limit/quota exceeded) — never for client-side errors (bad API key,
+// bad/unknown model name, malformed request), which must fail immediately
+// instead of being retried or falling back. Despite the name, this is also
+// used for Groq's `APIError` (groq-sdk), not just Gemini's: both SDKs throw
+// an error with a numeric `.status` (the HTTP status code) and a `.message`
+// that is the JSON-stringified error body from the API, which for 5xx/429
+// responses typically includes a `status`/`type` field such as
+// "UNAVAILABLE" or "RESOURCE_EXHAUSTED" — both are checked since either can
+// be present.
 const isRetryableGeminiError = (err) => {
   if (!err) return false;
 
   if (typeof err.status === "number") {
-    return err.status >= 500 && err.status < 600;
+    if (err.status >= 500 && err.status < 600) return true;
+    if (err.status === 429) return true;
+    return false;
   }
 
   const message = err.message || "";
   if (/\bUNAVAILABLE\b/i.test(message)) return true;
   if (/temporarily unavailable|service unavailable/i.test(message)) return true;
   if (/"code"\s*:\s*5\d{2}\b/.test(message)) return true;
+  if (/RESOURCE_EXHAUSTED|QUOTA_EXCEEDED/i.test(message)) return true;
+  if (/"code"\s*:\s*429\b/.test(message)) return true;
 
   return false;
 };
@@ -261,7 +270,8 @@ async function callGroqModel(prompt) {
 /**
  * Generate a complete response, preferring the primary Gemini model
  * (GEMINI_MODEL) and falling through a bounded chain of resilience steps
- * for temporary 503/UNAVAILABLE errors only:
+ * for temporary errors only (503/UNAVAILABLE or 429/RESOURCE_EXHAUSTED
+ * quota exceeded):
  *
  *   1. Retry the primary model with bounded exponential backoff + jitter,
  *      up to GEMINI_MAX_ATTEMPTS attempts total.
@@ -361,8 +371,8 @@ async function* streamGroqModel(prompt) {
 
 /**
  * Stream a response, preferring the primary Gemini model (GEMINI_MODEL) and
- * falling through a bounded chain of resilience steps for temporary
- * 503/UNAVAILABLE errors only:
+ * falling through a bounded chain of resilience steps for temporary errors
+ * only (503/UNAVAILABLE or 429/RESOURCE_EXHAUSTED quota exceeded):
  *
  *   1. If opening the stream / getting its first chunk fails with a
  *      retryable error, retry the primary model with bounded exponential
