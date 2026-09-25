@@ -1,10 +1,14 @@
 import { ChatOllama } from "@langchain/ollama";
 import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Provider abstraction: text generation and streaming, with Ollama always
 // tried first and Gemini used ONLY as a fallback for provider-level
 // failures (Ollama unreachable, timed out, or returning a server error).
+// Groq is a further, LAST-RESORT fallback used only when both the Gemini
+// primary and Gemini fallback models fail with a temporary (5xx/UNAVAILABLE)
+// error — see generateWithGemini/streamWithGemini below.
 //
 // This module is the single place that decides "which LLM answers this
 // prompt" for text chat. ragService.js builds prompts/RAG context and calls
@@ -48,6 +52,12 @@ const GEMINI_MAX_ATTEMPTS = 3;
 // little random jitter added so concurrent requests don't retry in lockstep.
 const GEMINI_RETRY_BASE_DELAY_MS = 1000;
 
+// Emergency fallback used only when BOTH Gemini models (primary, then
+// fallback) have failed with a temporary 5xx/UNAVAILABLE error. Not used
+// for embeddings — AI_EMBEDDING_PROVIDER/GEMINI_EMBEDDING_MODEL are
+// unaffected and continue to use Gemini exclusively.
+const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+
 const getOllamaLLM = () =>
   new ChatOllama({
     model: OLLAMA_MODEL,
@@ -76,6 +86,29 @@ const getGeminiClient = () => {
   }
 
   return geminiClient;
+};
+
+let groqClient = null;
+
+// Constructed lazily (only when both Gemini models have already failed with
+// a temporary error) so a missing GROQ_API_KEY never matters unless this
+// last-resort fallback is actually needed.
+const getGroqClient = () => {
+  const apiKey = process.env.GROQ_API_KEY;
+
+  if (!apiKey) {
+    const err = new Error(
+      "Groq fallback is not configured (GROQ_API_KEY is not set).",
+    );
+    err.name = "GroqNotConfiguredError";
+    throw err;
+  }
+
+  if (!groqClient) {
+    groqClient = new Groq({ apiKey });
+  }
+
+  return groqClient;
 };
 
 // Raised when neither provider could answer. Message is always a generic,
@@ -140,14 +173,15 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // exact same instant.
 const withJitter = (ms) => Math.round(ms + Math.random() * ms * 0.3);
 
-// True only for errors indicating a TEMPORARY problem with the Gemini
-// service itself (503/UNAVAILABLE/other 5xx) — never for client-side
-// errors (bad API key, bad/unknown model name, malformed request), which
-// must fail immediately instead of being retried or falling back. The
-// @google/genai SDK throws an `ApiError` with a numeric `.status` (the HTTP
-// status code) and a `.message` that is the JSON-stringified error body
-// from the API, which for 5xx responses typically includes a `status` field
-// such as "UNAVAILABLE" — both are checked since either can be present.
+// True only for errors indicating a TEMPORARY problem with the provider
+// itself (503/UNAVAILABLE/other 5xx) — never for client-side errors (bad
+// API key, bad/unknown model name, malformed request), which must fail
+// immediately instead of being retried or falling back. Despite the name,
+// this is also used for Groq's `APIError` (groq-sdk), not just Gemini's:
+// both SDKs throw an error with a numeric `.status` (the HTTP status code)
+// and a `.message` that is the JSON-stringified error body from the API,
+// which for 5xx responses typically includes a `status`/`type` field such
+// as "UNAVAILABLE" — both are checked since either can be present.
 const isRetryableGeminiError = (err) => {
   if (!err) return false;
 
@@ -202,17 +236,42 @@ async function callGeminiModel(model, prompt) {
   return text;
 }
 
+// Calls Groq's non-streaming chat completion and returns the text. Groq's
+// API is OpenAI-compatible, so the whole prompt (already fully built by
+// ragService.js — grounded context + question, or the AI-only prompt) is
+// sent as a single user message, the same shape Gemini receives via
+// `contents: prompt`.
+async function callGroqModel(prompt) {
+  const groq = getGroqClient();
+
+  const completion = await groq.chat.completions.create({
+    model: GROQ_MODEL,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const text = completion.choices?.[0]?.message?.content;
+
+  if (!text) {
+    throw new Error("Groq returned an empty response.");
+  }
+
+  return text;
+}
+
 /**
- * Generate a complete response from the primary Gemini model (GEMINI_MODEL),
- * with the same resilience to temporary 503/UNAVAILABLE errors as
- * streamWithGemini:
+ * Generate a complete response, preferring the primary Gemini model
+ * (GEMINI_MODEL) and falling through a bounded chain of resilience steps
+ * for temporary 503/UNAVAILABLE errors only:
  *
- *   - Retry the primary model with bounded exponential backoff + jitter, up
- *     to GEMINI_MAX_ATTEMPTS attempts total, but only for retryable errors.
- *   - If the primary model is still failing with a retryable error after
- *     those attempts, try GEMINI_FALLBACK_MODEL once.
- *   - A non-retryable error (bad API key, bad model, 4xx, ...) is thrown
- *     immediately with no retry and no fallback.
+ *   1. Retry the primary model with bounded exponential backoff + jitter,
+ *      up to GEMINI_MAX_ATTEMPTS attempts total.
+ *   2. If still failing with a retryable error, try GEMINI_FALLBACK_MODEL
+ *      once.
+ *   3. If the Gemini fallback ALSO fails with a retryable error, try Groq
+ *      (GROQ_MODEL) once as the final emergency fallback.
+ *
+ * A non-retryable error (bad API key, bad model, 4xx, ...) at any step is
+ * thrown immediately — no further retry and no fallback to the next step.
  */
 async function generateWithGemini(prompt) {
   let lastErr;
@@ -243,11 +302,26 @@ async function generateWithGemini(prompt) {
     `[aiProvider] Gemini primary exhausted retries, using fallback model ${GEMINI_FALLBACK_MODEL}`,
   );
 
-  const text = await callGeminiModel(GEMINI_FALLBACK_MODEL, prompt);
+  try {
+    const text = await callGeminiModel(GEMINI_FALLBACK_MODEL, prompt);
+    console.warn("[aiProvider] Gemini fallback succeeded");
+    return text;
+  } catch (fallbackErr) {
+    if (!isRetryableGeminiError(fallbackErr)) {
+      throw fallbackErr;
+    }
 
-  console.warn("[aiProvider] Gemini fallback succeeded");
+    console.warn(
+      `[aiProvider] Gemini fallback failed with ${fallbackErr.status || fallbackErr.name}`,
+    );
+    console.warn("[aiProvider] Falling back to Groq");
 
-  return text;
+    const text = await callGroqModel(prompt);
+
+    console.warn("[aiProvider] Groq succeeded");
+
+    return text;
+  }
 }
 
 // Opens a Gemini stream for `model` and yields non-empty text chunks. Kept
@@ -267,24 +341,48 @@ async function* streamGeminiModel(model, prompt) {
   }
 }
 
+// Opens a Groq chat-completion stream and yields non-empty text chunks.
+// Groq's SDK is OpenAI-compatible: each streamed chunk carries the next
+// piece of text at choices[0].delta.content.
+async function* streamGroqModel(prompt) {
+  const groq = getGroqClient();
+
+  const stream = await groq.chat.completions.create({
+    model: GROQ_MODEL,
+    messages: [{ role: "user", content: prompt }],
+    stream: true,
+  });
+
+  for await (const chunk of stream) {
+    const text = chunk.choices?.[0]?.delta?.content;
+    if (text) yield text;
+  }
+}
+
 /**
- * Stream from the primary Gemini model (GEMINI_MODEL), with resilience to
- * temporary 503/UNAVAILABLE errors:
+ * Stream a response, preferring the primary Gemini model (GEMINI_MODEL) and
+ * falling through a bounded chain of resilience steps for temporary
+ * 503/UNAVAILABLE errors only:
  *
- *   - If opening the stream / getting its first chunk fails with a
- *     retryable error, retry the primary model with bounded exponential
- *     backoff + jitter, up to GEMINI_MAX_ATTEMPTS attempts total.
- *   - If the primary model is still failing with a retryable error after
- *     those attempts, try GEMINI_FALLBACK_MODEL once.
- *   - A non-retryable error (bad API key, bad model, 4xx, ...) is thrown
- *     immediately with no retry and no fallback.
+ *   1. If opening the stream / getting its first chunk fails with a
+ *      retryable error, retry the primary model with bounded exponential
+ *      backoff + jitter, up to GEMINI_MAX_ATTEMPTS attempts total.
+ *   2. If still failing with a retryable error, try GEMINI_FALLBACK_MODEL
+ *      once.
+ *   3. If the Gemini fallback ALSO fails (before producing output) with a
+ *      retryable error, try Groq (GROQ_MODEL) once as the final emergency
+ *      fallback.
+ *
+ * A non-retryable error (bad API key, bad model, 4xx, ...) at any step is
+ * thrown immediately — no further retry and no fallback to the next step.
  *
  * Critically, this retry/fallback logic only ever applies BEFORE any output
- * has been produced. As soon as a model successfully yields its first
- * chunk, this function commits to that stream for the rest of the
- * response — a failure partway through is surfaced as a normal stream
- * error, never a trigger to restart with another model (which could
- * duplicate or corrupt what's already been streamed to the client).
+ * has been produced. As soon as a model (primary, Gemini fallback, or Groq)
+ * successfully yields its first chunk, this function commits to that
+ * stream for the rest of the response — a failure partway through is
+ * surfaced as a normal stream error, never a trigger to restart with
+ * another model (which could duplicate or corrupt what's already been
+ * streamed to the client).
  */
 async function* streamWithGemini(prompt) {
   let lastErr;
@@ -328,11 +426,35 @@ async function* streamWithGemini(prompt) {
   );
 
   const fallbackIterator = streamGeminiModel(GEMINI_FALLBACK_MODEL, prompt)[Symbol.asyncIterator]();
-  const first = await fallbackIterator.next();
+  let fallbackFirst;
+
+  try {
+    fallbackFirst = await fallbackIterator.next();
+  } catch (fallbackErr) {
+    if (!isRetryableGeminiError(fallbackErr)) {
+      throw fallbackErr;
+    }
+
+    console.warn(
+      `[aiProvider] Gemini fallback failed with ${fallbackErr.status || fallbackErr.name}`,
+    );
+    console.warn("[aiProvider] Falling back to Groq");
+
+    const groqIterator = streamGroqModel(prompt)[Symbol.asyncIterator]();
+    const groqFirst = await groqIterator.next();
+
+    console.warn("[aiProvider] Groq succeeded");
+
+    if (!groqFirst.done) yield groqFirst.value;
+    for await (const text of { [Symbol.asyncIterator]: () => groqIterator }) {
+      yield text;
+    }
+    return;
+  }
 
   console.warn("[aiProvider] Gemini fallback succeeded");
 
-  if (!first.done) yield first.value;
+  if (!fallbackFirst.done) yield fallbackFirst.value;
   for await (const text of { [Symbol.asyncIterator]: () => fallbackIterator }) {
     yield text;
   }
