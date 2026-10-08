@@ -420,9 +420,9 @@ export const deletePDF = async (req, res) => {
  * re-upload required. This is the explicit, user-triggered counterpart to
  * switching AI_EMBEDDING_PROVIDER: after changing that env var and
  * restarting the server, calling this endpoint backfills the new
- * provider's index from existing data. It is never called automatically
- * (not on startup, not on a provider change) since re-embedding a user's
- * entire document set is a real, potentially slow operation.
+ * provider's index from existing data. The same rebuild also runs
+ * automatically on startup, but only for users whose active-provider index
+ * is missing/invalid (see recoverVectorStoresOnStartup in ragService.js).
  */
 export const reindexDocuments = async (req, res) => {
   try {

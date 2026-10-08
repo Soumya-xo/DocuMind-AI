@@ -128,13 +128,72 @@ const removeVectorStore = (storePath, providerName) => {
   fs.rmSync(storePath, { recursive: true, force: true });
 };
 
+// Throws if the FAISS files in `dir` aren't structurally sound. Used both
+// to verify a freshly-built store before it's swapped live (see
+// saveVectorStoreAtomically) and to check an existing store on startup
+// (see diagnoseVectorStore).
+const verifyStoreFiles = (dir) => {
+  const indexPath = path.join(dir, FAISS_INDEX_FILENAME);
+  const docstorePath = path.join(dir, FAISS_DOCSTORE_FILENAME);
+
+  if (!fs.existsSync(indexPath) || fs.statSync(indexPath).size === 0) {
+    throw new Error("FAISS index file is missing or empty.");
+  }
+
+  let parsedDocstore;
+  try {
+    parsedDocstore = JSON.parse(fs.readFileSync(docstorePath, "utf-8"));
+  } catch {
+    throw new Error("FAISS docstore.json is missing or not valid JSON.");
+  }
+
+  if (!Array.isArray(parsedDocstore) || parsedDocstore.length !== 2) {
+    throw new Error("FAISS docstore.json has an unexpected shape.");
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// Per-user index write lock. Every operation that writes a user's FAISS
+// files (upload, delete-rebuild, re-index) runs through this, so two
+// writers for the same user never interleave — e.g. an upload arriving
+// while startup recovery is rebuilding that user's index waits for the
+// rebuild instead of being overwritten by it. Different users never block
+// each other. Purely in-process, which matches the single-instance deploy.
+// ─────────────────────────────────────────────────────────────────────────
+const userIndexLocks = new Map();
+
+const withUserIndexLock = (userId, task) => {
+  const key = userId.toString();
+  const previous = userIndexLocks.get(key) || Promise.resolve();
+
+  const run = previous.then(task);
+  const tail = run.catch(() => {});
+
+  userIndexLocks.set(key, tail);
+  tail.then(() => {
+    if (userIndexLocks.get(key) === tail) userIndexLocks.delete(key);
+  });
+
+  return run;
+};
+
+// Full rebuilds currently in flight, by userId. A second re-index request
+// for the same user (manual endpoint + startup recovery, or two clicks)
+// joins the running rebuild instead of starting another one.
+const inFlightRebuilds = new Map();
+
 /**
 
 * Add a document's pages to the vector store.
 * pageTexts: [{ pageNumber: number|null, text: string }]
   (pageNumber is null for formats without real page boundaries.)
   */
-export const addPDFToVectorStore = async (userId, pageTexts, pdfId, fileName) => {
+export const addPDFToVectorStore = (userId, pageTexts, pdfId, fileName) =>
+  withUserIndexLock(userId, () =>
+    addPDFToVectorStoreUnlocked(userId, pageTexts, pdfId, fileName),
+  );
+
+const addPDFToVectorStoreUnlocked = async (userId, pageTexts, pdfId, fileName) => {
   try {
     console.log(`🔧 addPDFToVectorStore: userId=${userId}, file=${fileName}`);
 
@@ -246,6 +305,13 @@ export const getRelevantContext = async (
   if (hasDocFilter) {
     console.log(`📌 Document filter active: ${selectedDocIds.join(", ")}`);
   }
+
+  // If this user's index is being rebuilt right now (e.g. startup recovery
+  // after Render wiped the disk), wait for it rather than answering as if
+  // they had no documents. A failed rebuild falls through to the normal
+  // "no vector store" handling below.
+  const pendingRebuild = inFlightRebuilds.get(userId.toString());
+  if (pendingRebuild) await pendingRebuild.catch(() => {});
 
   const providerName = getActiveEmbeddingProviderName();
   const storePath = getUserVectorStorePath(userId, providerName);
@@ -830,22 +896,10 @@ const saveVectorStoreAtomically = async (newStore, storePath, providerName) => {
     writeStoreMetadata(tmpDir, providerName);
 
     // Verify before touching anything live.
-    const indexPath = path.join(tmpDir, FAISS_INDEX_FILENAME);
-    const docstorePath = path.join(tmpDir, FAISS_DOCSTORE_FILENAME);
-
-    if (!fs.existsSync(indexPath) || fs.statSync(indexPath).size === 0) {
-      throw new Error("Rebuilt FAISS index file is missing or empty.");
-    }
-
-    let parsedDocstore;
     try {
-      parsedDocstore = JSON.parse(fs.readFileSync(docstorePath, "utf-8"));
-    } catch {
-      throw new Error("Rebuilt FAISS docstore.json is missing or not valid JSON.");
-    }
-
-    if (!Array.isArray(parsedDocstore) || parsedDocstore.length !== 2) {
-      throw new Error("Rebuilt FAISS docstore.json has an unexpected shape.");
+      verifyStoreFiles(tmpDir);
+    } catch (err) {
+      throw new Error(`Rebuilt store failed verification: ${err.message}`);
     }
 
     // Verified — swap. Each rename() is a single atomic syscall on the same
@@ -987,9 +1041,11 @@ export const removePDFFromVectorStore = async (userId, deletedPdfId) => {
 
     assertStoreProviderMatches(storePath, providerName);
 
-    await rebuildProviderIndexFromMongo(userId, providerName, {
-      excludePdfId: deletedPdfId,
-    });
+    await withUserIndexLock(userId, () =>
+      rebuildProviderIndexFromMongo(userId, providerName, {
+        excludePdfId: deletedPdfId,
+      }),
+    );
   } catch (error) {
     console.error("removePDFFromVectorStore error:", error.message);
   }
@@ -1003,13 +1059,171 @@ export const removePDFFromVectorStore = async (userId, deletedPdfId) => {
  * never mixes Nomic/Gemini vectors in one index (it's always a from-scratch
  * rebuild for a single provider).
  *
- * Deliberately NOT called automatically anywhere (not on server startup,
- * not when AI_EMBEDDING_PROVIDER changes) — re-embedding a user's entire
- * document set is a real, potentially slow and costly operation (real
- * Ollama/Gemini API calls), so it only ever runs when a caller explicitly
- * requests it (see POST /api/pdf/reindex).
+ * Re-embedding a user's entire document set is a real, potentially slow and
+ * costly operation (real Ollama/Gemini API calls), so it runs only when
+ * explicitly requested (POST /api/pdf/reindex) or when startup recovery
+ * finds the active provider's index missing/invalid (see
+ * recoverVectorStoresOnStartup) — never for a healthy index.
+ *
+ * Concurrent calls for the same user share one rebuild.
  */
-export const reindexActiveProvider = async (userId) => {
+export const reindexActiveProvider = (userId) => {
+  const key = userId.toString();
+
+  if (inFlightRebuilds.has(key)) return inFlightRebuilds.get(key);
+
   const providerName = getActiveEmbeddingProviderName();
-  return rebuildProviderIndexFromMongo(userId, providerName);
+  const rebuild = withUserIndexLock(key, () =>
+    rebuildProviderIndexFromMongo(key, providerName),
+  ).finally(() => inFlightRebuilds.delete(key));
+
+  inFlightRebuilds.set(key, rebuild);
+  return rebuild;
+};
+
+// Error messages from embedding SDKs/drivers are logged during startup
+// recovery, so scrub anything secret-shaped out of them first and cap the
+// length (some SDK errors embed full response bodies).
+const safeErrorMessage = (error) => {
+  let message = String(error?.message || error || "Unknown error");
+
+  for (const secret of [
+    process.env.GEMINI_API_KEY,
+    process.env.GROQ_API_KEY,
+    process.env.JWT_SECRET,
+    process.env.MONGO_URI,
+    process.env.MONGODB_URI,
+  ]) {
+    if (secret) message = message.split(secret).join("[redacted]");
+  }
+
+  return message
+    .replace(/([?&](?:key|api_key|token|access_token)=)[^&\s]+/gi, "$1[redacted]")
+    .replace(/Bearer\s+[\w.-]+/gi, "Bearer [redacted]")
+    .slice(0, 300);
+};
+
+// Returns null if the active provider's store at `storePath` exists and is
+// loadable, otherwise a short human-readable reason it needs rebuilding.
+const diagnoseVectorStore = async (storePath, providerName, embeddings) => {
+  if (!hasVectorStore(storePath)) return "missing";
+
+  try {
+    assertStoreProviderMatches(storePath, providerName);
+  } catch {
+    return "built with a different embedding provider";
+  }
+
+  try {
+    verifyStoreFiles(storePath);
+
+    // Loading doesn't embed anything — it only reads the files — so this
+    // costs no API calls. An index whose vector count disagrees with its
+    // docstore mapping would return wrong/missing chunks at query time.
+    const store = await FaissStore.load(storePath, embeddings);
+    const vectorCount = store.index.ntotal();
+    const mappingCount = Object.keys(store.getMapping()).length;
+
+    if (vectorCount === 0 || vectorCount !== mappingCount) {
+      return "corrupted (index/docstore size mismatch)";
+    }
+  } catch {
+    return "corrupted (could not be loaded)";
+  }
+
+  return null;
+};
+
+/**
+ * Startup self-healing for hosts with an ephemeral filesystem (Render Free
+ * wipes vectorstore/ on every restart, spin-down, and redeploy). MongoDB
+ * stays the source of truth: for every user who has documents there, check
+ * the ACTIVE provider's FAISS index and, only if it's missing/invalid,
+ * rebuild it via reindexActiveProvider — the same code path as
+ * POST /api/pdf/reindex. Healthy indexes are left untouched, other
+ * providers' stores are never inspected or modified, and users are
+ * processed one at a time to keep memory and embedding-API usage low.
+ *
+ * Never throws: intended to be fired (not awaited) after the server starts
+ * listening, so a slow or failing rebuild never keeps the API offline.
+ */
+export const recoverVectorStoresOnStartup = async () => {
+  const providerName = getActiveEmbeddingProviderName();
+
+  let embeddings;
+  try {
+    embeddings = getEmbeddings(providerName);
+  } catch (error) {
+    console.error(
+      `[VectorStore] Startup recovery skipped: ${providerName} embeddings unavailable: ${safeErrorMessage(error)}`,
+    );
+    return;
+  }
+
+  let userIds;
+  let usersWithoutText;
+  try {
+    const allUserIds = (await PDF.distinct("userId")).map(String);
+    userIds = (
+      await PDF.distinct("userId", { extractedText: { $exists: true, $ne: "" } })
+    ).map(String);
+    usersWithoutText = allUserIds.filter((id) => !userIds.includes(id));
+  } catch (error) {
+    console.error(
+      `[VectorStore] Startup recovery skipped: could not read documents from MongoDB: ${safeErrorMessage(error)}`,
+    );
+    return;
+  }
+
+  for (const userId of usersWithoutText) {
+    console.warn(
+      `[VectorStore] User ${userId} has documents in MongoDB but none with stored text — cannot rebuild their index. Those documents must be re-uploaded.`,
+    );
+  }
+
+  console.log(
+    `[VectorStore] Startup check: ${userIds.length} user(s) with documents, provider=${providerName}`,
+  );
+
+  let healthy = 0;
+  let rebuilt = 0;
+  let failed = 0;
+
+  for (const userId of userIds) {
+    const storePath = getUserVectorStorePath(userId, providerName);
+    const problem = await diagnoseVectorStore(storePath, providerName, embeddings);
+
+    if (!problem) {
+      healthy += 1;
+      continue;
+    }
+
+    console.log(
+      `[VectorStore] FAISS index ${problem} for user ${userId}. Starting automatic rebuild...`,
+    );
+
+    try {
+      const result = await reindexActiveProvider(userId);
+
+      if (result.chunks === 0) {
+        console.warn(
+          `[VectorStore] Rebuild for user ${userId} produced 0 chunks — MongoDB has no usable document text for this user. Documents must be re-uploaded.`,
+        );
+      } else {
+        console.log(
+          `[VectorStore] Rebuild completed for user ${userId}: ${result.chunks} chunks`,
+        );
+      }
+      rebuilt += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(
+        `[VectorStore] Rebuild failed for user ${userId}: ${safeErrorMessage(error)}`,
+      );
+    }
+  }
+
+  console.log(
+    `[VectorStore] Startup check done: ${healthy} healthy, ${rebuilt} rebuilt, ${failed} failed`,
+  );
 };

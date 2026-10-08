@@ -9,6 +9,7 @@ import authRoutes from "./routes/authRoutes.js";
 import pdfRoutes from "./routes/pdfRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
+import { recoverVectorStoresOnStartup } from "./utils/ragService.js";
 
 dotenv.config();
 
@@ -69,6 +70,12 @@ mongoose
     console.log("✅ MongoDB connected");
     app.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`);
+
+      // Rebuild any FAISS index lost to an ephemeral filesystem (e.g. Render
+      // Free). Runs in the background so the API is reachable immediately.
+      recoverVectorStoresOnStartup().catch((err) =>
+        console.error("[VectorStore] Startup recovery crashed:", err?.message),
+      );
     });
   })
   .catch((err) => {
